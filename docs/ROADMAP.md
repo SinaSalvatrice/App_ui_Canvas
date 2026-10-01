@@ -13,7 +13,48 @@
 - [ ] bootstrap native host folders locally
 
 ## M1 - Real editor core
-Undo/redo, multi-select, resize handles, Windows mouse/keyboard transforms, Android touch transforms, central zoom/pan, snapping, guides, grid, layers, copy/paste, duplicate/delete, context menus, editable inspector and dirty-state handling.
+
+### State and history
+- [x] snapshot history
+- [x] undo / redo
+- [x] dirty-state tracking
+- [x] multi-selection model
+- [x] duplicate / delete
+- [ ] command objects for complex grouped edits
+
+### Transform engine
+- [x] move one or multiple selected nodes
+- [x] eight resize handles
+- [x] zoom-independent handle hit targets
+- [x] minimum sizes
+- [x] resize at canvas zoom
+- [ ] rotation
+- [ ] group resize
+- [ ] keyboard nudging
+
+### Canvas
+- [x] central TransformationController
+- [x] Windows Ctrl + wheel zoom
+- [x] Windows wheel pan
+- [x] Windows Shift + wheel horizontal pan
+- [x] Android pinch zoom / pan
+- [x] zoom percentage
+- [x] zoom in / out
+- [x] fit screen
+- [x] grid
+- [x] grid snapping
+- [x] center guides
+- [ ] smart alignment guides
+- [ ] ruler
+
+### Remaining editor operations
+- [ ] copy / paste
+- [ ] layer reorder
+- [ ] visibility / lock
+- [ ] context menus / Android long press
+- [ ] editable numeric inspector
+- [ ] mouse-wheel numeric stepping
+- [ ] safe close / unsaved dialog
 
 ## M2 - Project system
 Create/open/save .appui, autosave/recovery, multiple screens, presets, stable IDs, migrations and templates.

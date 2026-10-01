@@ -1,0 +1,510 @@
+import 'package:flutter/gestures.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../model/ui_node.dart';
+import '../platform/designer_target.dart';
+import 'editor_controller.dart';
+
+class CanvasView extends StatefulWidget {
+  const CanvasView({
+    required this.controller,
+    required this.target,
+    super.key,
+  });
+
+  final EditorController controller;
+  final DesignerTarget target;
+
+  @override
+  State<CanvasView> createState() => _CanvasViewState();
+}
+
+class _CanvasViewState extends State<CanvasView> {
+  final TransformationController _transform = TransformationController();
+  final GlobalKey _viewportKey = GlobalKey();
+
+  double get _scale => _transform.value.getMaxScaleOnAxis();
+
+  @override
+  void dispose() {
+    _transform.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screen = widget.controller.activeScreen;
+    final isWindows = widget.target == DesignerTarget.windows;
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Listener(
+            key: _viewportKey,
+            onPointerSignal: isWindows ? _handlePointerSignal : null,
+            child: InteractiveViewer(
+              transformationController: _transform,
+              minScale: .20,
+              maxScale: 4,
+              boundaryMargin: const EdgeInsets.all(1000),
+              constrained: false,
+              panEnabled: true,
+              scaleEnabled: !isWindows,
+              child: SizedBox(
+                width: screen.width,
+                height: screen.height,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => widget.controller.selectNode(null),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: Colors.black26),
+                      boxShadow: const [
+                        BoxShadow(
+                          blurRadius: 18,
+                          color: Color(0x22000000),
+                        ),
+                      ],
+                    ),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        if (widget.controller.gridEnabled)
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: CustomPaint(
+                                painter: _GridPainter(
+                                  step: widget.controller.gridStep,
+                                ),
+                              ),
+                            ),
+                          ),
+                        if (widget.controller.guidesEnabled)
+                          const Positioned.fill(
+                            child: IgnorePointer(
+                              child: CustomPaint(
+                                painter: _GuidePainter(),
+                              ),
+                            ),
+                          ),
+                        for (final node in screen.nodes)
+                          _NodeView(
+                            node: node,
+                            selected: widget.controller.isSelected(node.id),
+                            primary:
+                                widget.controller.selectedNodeId == node.id,
+                            scale: _scale,
+                            onSelect: (additive) => widget.controller.selectNode(
+                              node.id,
+                              additive: additive,
+                              toggle: additive,
+                            ),
+                            onMove: (dx, dy) =>
+                                widget.controller.moveSelectedBy(dx, dy),
+                            onMoveEnd: widget.controller.commitLiveEdit,
+                            onResize: ({
+                              required dx,
+                              required dy,
+                              required left,
+                              required right,
+                              required top,
+                              required bottom,
+                            }) =>
+                                widget.controller.resizeNodeBy(
+                              node.id,
+                              dx: dx,
+                              dy: dy,
+                              left: left,
+                              right: right,
+                              top: top,
+                              bottom: bottom,
+                            ),
+                            onResizeEnd: widget.controller.commitLiveEdit,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: 10,
+          right: 10,
+          child: AnimatedBuilder(
+            animation: _transform,
+            builder: (context, _) {
+              final percent = (_scale * 100).round();
+              return Material(
+                elevation: 2,
+                borderRadius: BorderRadius.circular(10),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'Zoom out',
+                      onPressed: () => _setZoom(_scale / 1.15),
+                      icon: const Icon(Icons.remove),
+                    ),
+                    SizedBox(
+                      width: 58,
+                      child: Text(
+                        '$percent%',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Zoom in',
+                      onPressed: () => _setZoom(_scale * 1.15),
+                      icon: const Icon(Icons.add),
+                    ),
+                    IconButton(
+                      tooltip: 'Fit screen',
+                      onPressed: _fitScreen,
+                      icon: const Icon(Icons.fit_screen),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        Positioned(
+          left: 10,
+          bottom: 10,
+          child: Material(
+            elevation: 2,
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FilterChip(
+                    label: const Text('Grid'),
+                    selected: widget.controller.gridEnabled,
+                    onSelected: widget.controller.setGridEnabled,
+                  ),
+                  const SizedBox(width: 6),
+                  FilterChip(
+                    label: const Text('Snap'),
+                    selected: widget.controller.snapEnabled,
+                    onSelected: widget.controller.setSnapEnabled,
+                  ),
+                  const SizedBox(width: 6),
+                  FilterChip(
+                    label: const Text('Guides'),
+                    selected: widget.controller.guidesEnabled,
+                    onSelected: widget.controller.setGuidesEnabled,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _handlePointerSignal(PointerSignalEvent signal) {
+    if (signal is! PointerScrollEvent) return;
+
+    GestureBinding.instance.pointerSignalResolver.register(signal, (event) {
+      final scroll = event as PointerScrollEvent;
+      final keyboard = HardwareKeyboard.instance;
+      final primary =
+          keyboard.isControlPressed || keyboard.isMetaPressed;
+
+      if (primary) {
+        final factor = scroll.scrollDelta.dy < 0 ? 1.12 : 1 / 1.12;
+        _setZoom(_scale * factor, focalGlobal: scroll.position);
+        return;
+      }
+
+      final matrix = _transform.value.clone();
+      if (keyboard.isShiftPressed) {
+        matrix.storage[12] -= scroll.scrollDelta.dy;
+      } else {
+        matrix.storage[13] -= scroll.scrollDelta.dy;
+      }
+      _transform.value = matrix;
+    });
+  }
+
+  void _setZoom(double requested, {Offset? focalGlobal}) {
+    final next = requested.clamp(.20, 4.0).toDouble();
+    final render = _viewportKey.currentContext?.findRenderObject();
+    if (render is! RenderBox) return;
+
+    final focal = focalGlobal == null
+        ? render.size.center(Offset.zero)
+        : render.globalToLocal(focalGlobal);
+    final scene = _transform.toScene(focal);
+
+    final matrix = Matrix4.identity()
+      ..setEntry(0, 0, next)
+      ..setEntry(1, 1, next);
+    matrix.storage[12] = focal.dx - scene.dx * next;
+    matrix.storage[13] = focal.dy - scene.dy * next;
+    _transform.value = matrix;
+  }
+
+  void _fitScreen() {
+    final render = _viewportKey.currentContext?.findRenderObject();
+    if (render is! RenderBox) return;
+
+    final screen = widget.controller.activeScreen;
+    const padding = 72.0;
+    final widthScale = (render.size.width - padding) / screen.width;
+    final heightScale = (render.size.height - padding) / screen.height;
+    final scale = widthScale < heightScale ? widthScale : heightScale;
+    final next = scale.clamp(.20, 4.0).toDouble();
+
+    final matrix = Matrix4.identity()
+      ..setEntry(0, 0, next)
+      ..setEntry(1, 1, next);
+    matrix.storage[12] = (render.size.width - screen.width * next) / 2;
+    matrix.storage[13] = (render.size.height - screen.height * next) / 2;
+    _transform.value = matrix;
+  }
+}
+
+class _NodeView extends StatelessWidget {
+  const _NodeView({
+    required this.node,
+    required this.selected,
+    required this.primary,
+    required this.scale,
+    required this.onSelect,
+    required this.onMove,
+    required this.onMoveEnd,
+    required this.onResize,
+    required this.onResizeEnd,
+  });
+
+  final UiNode node;
+  final bool selected;
+  final bool primary;
+  final double scale;
+  final ValueChanged<bool> onSelect;
+  final void Function(double dx, double dy) onMove;
+  final VoidCallback onMoveEnd;
+  final void Function({
+    required double dx,
+    required double dy,
+    required bool left,
+    required bool right,
+    required bool top,
+    required bool bottom,
+  }) onResize;
+  final VoidCallback onResizeEnd;
+
+  bool get _additiveSelection {
+    final keyboard = HardwareKeyboard.instance;
+    return keyboard.isControlPressed || keyboard.isMetaPressed;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: node.frame.x,
+      top: node.frame.y,
+      width: node.frame.width,
+      height: node.frame.height,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => onSelect(_additiveSelection),
+        onPanStart: (_) {
+          if (!selected) onSelect(_additiveSelection);
+        },
+        onPanUpdate: (details) => onMove(
+          details.delta.dx / scale,
+          details.delta.dy / scale,
+        ),
+        onPanEnd: (_) => onMoveEnd(),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF5F5F5),
+                  border: Border.all(
+                    color: selected
+                        ? Theme.of(context).colorScheme.primary
+                        : Colors.black26,
+                    width: selected ? 2 / scale : 1 / scale,
+                  ),
+                ),
+                child: Center(
+                  child: Text(
+                    (node.properties['text'] ?? node.name ?? node.type)
+                        .toString(),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ),
+            if (primary)
+              for (final handle in _ResizeHandle.values)
+                _ResizeGrip(
+                  handle: handle,
+                  scale: scale,
+                  node: node,
+                  onResize: onResize,
+                  onResizeEnd: onResizeEnd,
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ResizeGrip extends StatelessWidget {
+  const _ResizeGrip({
+    required this.handle,
+    required this.scale,
+    required this.node,
+    required this.onResize,
+    required this.onResizeEnd,
+  });
+
+  final _ResizeHandle handle;
+  final double scale;
+  final UiNode node;
+  final void Function({
+    required double dx,
+    required double dy,
+    required bool left,
+    required bool right,
+    required bool top,
+    required bool bottom,
+  }) onResize;
+  final VoidCallback onResizeEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final hitSize = 36 / scale;
+    final visualSize = 12 / scale;
+
+    final left = switch (handle.horizontal) {
+      -1 => -hitSize / 2,
+      0 => node.frame.width / 2 - hitSize / 2,
+      _ => null,
+    };
+    final right = handle.horizontal == 1 ? -hitSize / 2 : null;
+    final top = switch (handle.vertical) {
+      -1 => -hitSize / 2,
+      0 => node.frame.height / 2 - hitSize / 2,
+      _ => null,
+    };
+    final bottom = handle.vertical == 1 ? -hitSize / 2 : null;
+
+    return Positioned(
+      left: left,
+      right: right,
+      top: top,
+      bottom: bottom,
+      width: hitSize,
+      height: hitSize,
+      child: MouseRegion(
+        cursor: handle.cursor,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onPanUpdate: (details) => onResize(
+            dx: details.delta.dx / scale,
+            dy: details.delta.dy / scale,
+            left: handle.horizontal == -1,
+            right: handle.horizontal == 1,
+            top: handle.vertical == -1,
+            bottom: handle.vertical == 1,
+          ),
+          onPanEnd: (_) => onResizeEnd(),
+          child: Center(
+            child: Container(
+              width: visualSize,
+              height: visualSize,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.primary,
+                  width: 2 / scale,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+enum _ResizeHandle {
+  topLeft(-1, -1, SystemMouseCursors.resizeUpLeftDownRight),
+  top(0, -1, SystemMouseCursors.resizeUpDown),
+  topRight(1, -1, SystemMouseCursors.resizeUpRightDownLeft),
+  right(1, 0, SystemMouseCursors.resizeLeftRight),
+  bottomRight(1, 1, SystemMouseCursors.resizeUpLeftDownRight),
+  bottom(0, 1, SystemMouseCursors.resizeUpDown),
+  bottomLeft(-1, 1, SystemMouseCursors.resizeUpRightDownLeft),
+  left(-1, 0, SystemMouseCursors.resizeLeftRight);
+
+  const _ResizeHandle(this.horizontal, this.vertical, this.cursor);
+
+  final int horizontal;
+  final int vertical;
+  final MouseCursor cursor;
+}
+
+class _GridPainter extends CustomPainter {
+  const _GridPainter({required this.step});
+
+  final double step;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0x12000000)
+      ..strokeWidth = .75;
+
+    for (var x = 0.0; x <= size.width; x += step) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+    for (var y = 0.0; y <= size.height; y += step) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GridPainter oldDelegate) =>
+      oldDelegate.step != step;
+}
+
+class _GuidePainter extends CustomPainter {
+  const _GuidePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0x335A67D8)
+      ..strokeWidth = 1;
+
+    canvas.drawLine(
+      Offset(size.width / 2, 0),
+      Offset(size.width / 2, size.height),
+      paint,
+    );
+    canvas.drawLine(
+      Offset(0, size.height / 2),
+      Offset(size.width, size.height / 2),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}

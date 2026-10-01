@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../components/component_definition.dart';
 import '../components/component_registry.dart';
-import '../model/ui_node.dart';
 import '../platform/designer_target.dart';
+import 'canvas_view.dart';
 import 'editor_controller.dart';
 
 class EditorShell extends StatelessWidget {
@@ -49,33 +50,58 @@ class _WindowsDesigner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            _DesktopTopBar(controller: controller),
-            const Divider(height: 1),
-            Expanded(
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 220,
-                    child: _ComponentLibrary(
-                      components: components,
-                      onAdd: controller.addComponent,
-                    ),
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.keyZ, control: true):
+            controller.undo,
+        const SingleActivator(LogicalKeyboardKey.keyY, control: true):
+            controller.redo,
+        const SingleActivator(
+          LogicalKeyboardKey.keyZ,
+          control: true,
+          shift: true,
+        ): controller.redo,
+        const SingleActivator(LogicalKeyboardKey.delete):
+            controller.deleteSelected,
+        const SingleActivator(LogicalKeyboardKey.keyD, control: true):
+            controller.duplicateSelected,
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          body: SafeArea(
+            child: Column(
+              children: [
+                _DesktopTopBar(controller: controller),
+                const Divider(height: 1),
+                Expanded(
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 220,
+                        child: _ComponentLibrary(
+                          components: components,
+                          onAdd: controller.addComponent,
+                        ),
+                      ),
+                      const VerticalDivider(width: 1),
+                      Expanded(
+                        child: CanvasView(
+                          controller: controller,
+                          target: DesignerTarget.windows,
+                        ),
+                      ),
+                      const VerticalDivider(width: 1),
+                      SizedBox(
+                        width: 280,
+                        child: _RightPanel(controller: controller),
+                      ),
+                    ],
                   ),
-                  const VerticalDivider(width: 1),
-                  Expanded(child: _Canvas(controller: controller)),
-                  const VerticalDivider(width: 1),
-                  SizedBox(
-                    width: 260,
-                    child: _Inspector(controller: controller),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -95,21 +121,37 @@ class _AndroidDesigner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('App UI Designer'),
+        title: Row(
+          children: [
+            const Text('App UI Designer'),
+            if (controller.isDirty) ...[
+              const SizedBox(width: 8),
+              const Text('•', style: TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ],
+        ),
         actions: [
+          IconButton(
+            tooltip: 'Undo',
+            onPressed: controller.canUndo ? controller.undo : null,
+            icon: const Icon(Icons.undo),
+          ),
+          IconButton(
+            tooltip: 'Redo',
+            onPressed: controller.canRedo ? controller.redo : null,
+            icon: const Icon(Icons.redo),
+          ),
           IconButton(
             tooltip: 'Preview',
             onPressed: null,
             icon: const Icon(Icons.play_arrow),
           ),
-          IconButton(
-            tooltip: 'Export shell',
-            onPressed: null,
-            icon: const Icon(Icons.output),
-          ),
         ],
       ),
-      body: _Canvas(controller: controller),
+      body: CanvasView(
+        controller: controller,
+        target: DesignerTarget.android,
+      ),
       bottomNavigationBar: SafeArea(
         top: false,
         child: BottomAppBar(
@@ -203,13 +245,40 @@ class _DesktopTopBar extends StatelessWidget {
         child: Row(
           children: [
             const Text(
-              'App UI Designer',
+              'App UI Canvas',
               style: TextStyle(fontWeight: FontWeight.w700),
             ),
-            const SizedBox(width: 16),
-            const Chip(label: Text('Windows designer')),
+            const SizedBox(width: 14),
+            const Chip(label: Text('Windows')),
+            const SizedBox(width: 10),
+            IconButton(
+              tooltip: 'Undo',
+              onPressed: controller.canUndo ? controller.undo : null,
+              icon: const Icon(Icons.undo),
+            ),
+            IconButton(
+              tooltip: 'Redo',
+              onPressed: controller.canRedo ? controller.redo : null,
+              icon: const Icon(Icons.redo),
+            ),
+            IconButton(
+              tooltip: 'Duplicate',
+              onPressed:
+                  controller.selectedCount == 0 ? null : controller.duplicateSelected,
+              icon: const Icon(Icons.copy_outlined),
+            ),
+            IconButton(
+              tooltip: 'Delete',
+              onPressed:
+                  controller.selectedCount == 0 ? null : controller.deleteSelected,
+              icon: const Icon(Icons.delete_outline),
+            ),
             const Spacer(),
-            Text(controller.project.name),
+            Text(
+              controller.isDirty
+                  ? '${controller.project.name} •'
+                  : controller.project.name,
+            ),
             const SizedBox(width: 12),
             const OutlinedButton(
               onPressed: null,
@@ -277,6 +346,8 @@ class _ComponentLibrary extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
+        Text('Components', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 6),
         for (final entry in categories.entries) ...[
           Padding(
             padding: const EdgeInsets.only(top: 12, bottom: 4),
@@ -298,6 +369,51 @@ class _ComponentLibrary extends StatelessWidget {
   }
 }
 
+class _RightPanel extends StatefulWidget {
+  const _RightPanel({required this.controller});
+
+  final EditorController controller;
+
+  @override
+  State<_RightPanel> createState() => _RightPanelState();
+}
+
+class _RightPanelState extends State<_RightPanel> {
+  int _tab = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        SegmentedButton<int>(
+          segments: const [
+            ButtonSegment(
+              value: 0,
+              label: Text('Inspector'),
+              icon: Icon(Icons.tune, size: 17),
+            ),
+            ButtonSegment(
+              value: 1,
+              label: Text('Layers'),
+              icon: Icon(Icons.layers_outlined, size: 17),
+            ),
+          ],
+          selected: {_tab},
+          onSelectionChanged: (selection) {
+            setState(() => _tab = selection.first);
+          },
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: _tab == 0
+              ? _Inspector(controller: widget.controller)
+              : _Layers(controller: widget.controller),
+        ),
+      ],
+    );
+  }
+}
+
 class _Layers extends StatelessWidget {
   const _Layers({required this.controller});
 
@@ -314,109 +430,27 @@ class _Layers extends StatelessWidget {
       children: [
         for (final node in nodes.reversed)
           ListTile(
-            leading: const Icon(Icons.layers_outlined),
+            leading: Icon(
+              controller.isSelected(node.id)
+                  ? Icons.check_box
+                  : Icons.check_box_outline_blank,
+              size: 19,
+            ),
             title: Text(node.name ?? node.type),
             subtitle: Text(node.id),
-            selected: node.id == controller.selectedNodeId,
-            onTap: () => controller.selectNode(node.id),
+            selected: controller.isSelected(node.id),
+            onTap: () {
+              final keyboard = HardwareKeyboard.instance;
+              final additive =
+                  keyboard.isControlPressed || keyboard.isMetaPressed;
+              controller.selectNode(
+                node.id,
+                additive: additive,
+                toggle: additive,
+              );
+            },
           ),
       ],
-    );
-  }
-}
-
-class _Canvas extends StatelessWidget {
-  const _Canvas({required this.controller});
-
-  final EditorController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final screen = controller.activeScreen;
-
-    return ColoredBox(
-      color: Theme.of(context).colorScheme.surfaceContainerLowest,
-      child: InteractiveViewer(
-        minScale: 0.25,
-        maxScale: 3,
-        boundaryMargin: const EdgeInsets.all(800),
-        constrained: false,
-        child: Center(
-          child: Container(
-            width: screen.width,
-            height: screen.height,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border.all(color: Colors.black26),
-              boxShadow: const [
-                BoxShadow(
-                  blurRadius: 18,
-                  color: Color(0x22000000),
-                ),
-              ],
-            ),
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                for (final node in screen.nodes)
-                  _NodeView(
-                    node: node,
-                    selected: node.id == controller.selectedNodeId,
-                    onSelect: () => controller.selectNode(node.id),
-                    onMove: (dx, dy) => controller.moveNode(node.id, dx, dy),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _NodeView extends StatelessWidget {
-  const _NodeView({
-    required this.node,
-    required this.selected,
-    required this.onSelect,
-    required this.onMove,
-  });
-
-  final UiNode node;
-  final bool selected;
-  final VoidCallback onSelect;
-  final void Function(double dx, double dy) onMove;
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      left: node.frame.x,
-      top: node.frame.y,
-      width: node.frame.width,
-      height: node.frame.height,
-      child: GestureDetector(
-        onTap: onSelect,
-        onPanStart: (_) => onSelect(),
-        onPanUpdate: (details) => onMove(
-          details.delta.dx,
-          details.delta.dy,
-        ),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: const Color(0xFFF5F5F5),
-            border: Border.all(
-              color: selected ? Colors.blue : Colors.black26,
-              width: selected ? 2 : 1,
-            ),
-          ),
-          child: Center(
-            child: Text(
-              (node.properties['text'] ?? node.name ?? node.type).toString(),
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
@@ -440,6 +474,13 @@ class _Inspector extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        if (controller.selectedCount > 1)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Chip(
+              label: Text('${controller.selectedCount} selected'),
+            ),
+          ),
         Text(
           node.name ?? node.type,
           style: Theme.of(context).textTheme.titleMedium,
@@ -452,6 +493,10 @@ class _Inspector extends StatelessWidget {
         Text('Y: ${node.frame.y.toStringAsFixed(0)}'),
         Text('W: ${node.frame.width.toStringAsFixed(0)}'),
         Text('H: ${node.frame.height.toStringAsFixed(0)}'),
+        const SizedBox(height: 16),
+        const Text(
+          'Editable numeric controls are the next inspector step.',
+        ),
       ],
     );
   }
