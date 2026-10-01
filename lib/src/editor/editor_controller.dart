@@ -201,6 +201,14 @@ class EditorController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void renameProject(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty || trimmed == _project.name) return;
+    _project = _project.copyWith(name: trimmed);
+    _pushHistory();
+    notifyListeners();
+  }
+
   void markClean() {
     _cleanProjectJson = jsonEncode(_project.toJson());
     notifyListeners();
