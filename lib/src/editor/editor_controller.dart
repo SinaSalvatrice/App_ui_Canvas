@@ -552,6 +552,24 @@ class EditorController extends ChangeNotifier {
       }
     }
 
+    if (source.layout.widthMode == UiSizeMode.hug) {
+      x = start.x;
+      width = start.width;
+    } else {
+      final constrainedWidth = source.layout.constrainWidth(width);
+      if (left) x += width - constrainedWidth;
+      width = constrainedWidth;
+    }
+
+    if (source.layout.heightMode == UiSizeMode.hug) {
+      y = start.y;
+      height = start.height;
+    } else {
+      final constrainedHeight = source.layout.constrainHeight(height);
+      if (top) y += height - constrainedHeight;
+      height = constrainedHeight;
+    }
+
     _replaceNode(
       source.copyWith(
         frame: source.frame.copyWith(
@@ -1194,10 +1212,11 @@ class EditorController extends ChangeNotifier {
   }
 
   void _replaceNode(UiNode replacement, {required bool commit}) {
+    final normalized = _nodeWithSyncedInsets(replacement);
     _replaceActiveScreen(
       activeScreen.copyWith(
         nodes: activeScreen.nodes
-            .map((node) => node.id == replacement.id ? replacement : node)
+            .map((node) => node.id == normalized.id ? normalized : node)
             .toList(),
       ),
       commit: commit,
