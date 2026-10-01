@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../components/component_definition.dart';
 import '../components/component_registry.dart';
+import '../model/screen_preset.dart';
 import '../model/ui_screen.dart';
 import '../platform/designer_target.dart';
 import 'canvas_view.dart';
@@ -16,17 +17,21 @@ class EditorShell extends StatelessWidget {
     required this.controller,
     required this.onNewProject,
     required this.onOpenProject,
+    required this.onOpenRecentProject,
     required this.onSaveProject,
     required this.onSaveProjectAs,
     this.projectPath,
+    this.recentProjects = const [],
     super.key,
   });
 
   final DesignerTarget target;
   final EditorController controller;
   final String? projectPath;
+  final List<String> recentProjects;
   final Future<void> Function() onNewProject;
   final Future<void> Function() onOpenProject;
+  final Future<void> Function(String path) onOpenRecentProject;
   final Future<void> Function() onSaveProject;
   final Future<void> Function() onSaveProjectAs;
 
@@ -42,8 +47,10 @@ class EditorShell extends StatelessWidget {
               controller: controller,
               components: components,
               projectPath: projectPath,
+              recentProjects: recentProjects,
               onNewProject: onNewProject,
               onOpenProject: onOpenProject,
+              onOpenRecentProject: onOpenRecentProject,
               onSaveProject: onSaveProject,
               onSaveProjectAs: onSaveProjectAs,
             ),
@@ -51,8 +58,10 @@ class EditorShell extends StatelessWidget {
               controller: controller,
               components: components,
               projectPath: projectPath,
+              recentProjects: recentProjects,
               onNewProject: onNewProject,
               onOpenProject: onOpenProject,
+              onOpenRecentProject: onOpenRecentProject,
               onSaveProject: onSaveProject,
               onSaveProjectAs: onSaveProjectAs,
             ),
@@ -67,8 +76,10 @@ class _WindowsDesigner extends StatelessWidget {
     required this.controller,
     required this.components,
     required this.projectPath,
+    required this.recentProjects,
     required this.onNewProject,
     required this.onOpenProject,
+    required this.onOpenRecentProject,
     required this.onSaveProject,
     required this.onSaveProjectAs,
   });
@@ -76,8 +87,10 @@ class _WindowsDesigner extends StatelessWidget {
   final EditorController controller;
   final List<ComponentDefinition> components;
   final String? projectPath;
+  final List<String> recentProjects;
   final Future<void> Function() onNewProject;
   final Future<void> Function() onOpenProject;
+  final Future<void> Function(String path) onOpenRecentProject;
   final Future<void> Function() onSaveProject;
   final Future<void> Function() onSaveProjectAs;
 
@@ -151,8 +164,10 @@ class _WindowsDesigner extends StatelessWidget {
                 _DesktopTopBar(
                   controller: controller,
                   projectPath: projectPath,
+                  recentProjects: recentProjects,
                   onNewProject: onNewProject,
                   onOpenProject: onOpenProject,
+                  onOpenRecentProject: onOpenRecentProject,
                   onSaveProject: onSaveProject,
                   onSaveProjectAs: onSaveProjectAs,
                 ),
@@ -208,8 +223,10 @@ class _AndroidDesigner extends StatelessWidget {
     required this.controller,
     required this.components,
     required this.projectPath,
+    required this.recentProjects,
     required this.onNewProject,
     required this.onOpenProject,
+    required this.onOpenRecentProject,
     required this.onSaveProject,
     required this.onSaveProjectAs,
   });
@@ -217,8 +234,10 @@ class _AndroidDesigner extends StatelessWidget {
   final EditorController controller;
   final List<ComponentDefinition> components;
   final String? projectPath;
+  final List<String> recentProjects;
   final Future<void> Function() onNewProject;
   final Future<void> Function() onOpenProject;
+  final Future<void> Function(String path) onOpenRecentProject;
   final Future<void> Function() onSaveProject;
   final Future<void> Function() onSaveProjectAs;
 
@@ -242,6 +261,17 @@ class _AndroidDesigner extends StatelessWidget {
             tooltip: 'Save',
             onPressed: () => onSaveProject(),
             icon: const Icon(Icons.save_outlined),
+          ),
+          IconButton(
+            tooltip: 'Recent projects',
+            onPressed: recentProjects.isEmpty
+                ? null
+                : () => _showRecentProjects(
+                      context,
+                      recentProjects,
+                      onOpenRecentProject,
+                    ),
+            icon: const Icon(Icons.history),
           ),
           IconButton(
             tooltip: 'Undo',
@@ -380,16 +410,20 @@ class _DesktopTopBar extends StatelessWidget {
   const _DesktopTopBar({
     required this.controller,
     required this.projectPath,
+    required this.recentProjects,
     required this.onNewProject,
     required this.onOpenProject,
+    required this.onOpenRecentProject,
     required this.onSaveProject,
     required this.onSaveProjectAs,
   });
 
   final EditorController controller;
   final String? projectPath;
+  final List<String> recentProjects;
   final Future<void> Function() onNewProject;
   final Future<void> Function() onOpenProject;
+  final Future<void> Function(String path) onOpenRecentProject;
   final Future<void> Function() onSaveProject;
   final Future<void> Function() onSaveProjectAs;
 
@@ -417,6 +451,25 @@ class _DesktopTopBar extends StatelessWidget {
               tooltip: 'Open (Ctrl+O)',
               onPressed: () => onOpenProject(),
               icon: const Icon(Icons.folder_open),
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'Recent projects',
+              enabled: recentProjects.isNotEmpty,
+              icon: const Icon(Icons.history),
+              onSelected: onOpenRecentProject,
+              itemBuilder: (context) => [
+                for (final path in recentProjects)
+                  PopupMenuItem(
+                    value: path,
+                    child: Tooltip(
+                      message: path,
+                      child: Text(
+                        _fileName(path),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+              ],
             ),
             IconButton(
               tooltip: 'Save (Ctrl+S)',
@@ -521,11 +574,31 @@ class ScreensPanel extends StatelessWidget {
                 onPressed: controller.duplicateActiveScreen,
                 icon: const Icon(Icons.copy_outlined, size: 18),
               ),
-              IconButton(
+              PopupMenuButton<ScreenPreset>(
+                tooltip: 'Resize active screen',
+                icon: const Icon(Icons.aspect_ratio, size: 18),
+                onSelected: controller.applyScreenPreset,
+                itemBuilder: (context) => [
+                  for (final preset
+                      in ScreenPreset.forTarget(controller.project.target))
+                    PopupMenuItem(
+                      value: preset,
+                      child: Text('Resize: ${preset.label}'),
+                    ),
+                ],
+              ),
+              PopupMenuButton<ScreenPreset>(
                 tooltip: 'Add screen',
-                visualDensity: VisualDensity.compact,
-                onPressed: controller.addScreen,
                 icon: const Icon(Icons.add, size: 20),
+                onSelected: controller.addScreen,
+                itemBuilder: (context) => [
+                  for (final preset
+                      in ScreenPreset.forTarget(controller.project.target))
+                    PopupMenuItem(
+                      value: preset,
+                      child: Text(preset.label),
+                    ),
+                ],
               ),
             ],
           ),
@@ -815,4 +888,49 @@ Future<void> _renameProjectDialog(
   if (name != null) {
     controller.renameProject(name);
   }
+}
+
+
+Future<void> _showRecentProjects(
+  BuildContext context,
+  List<String> paths,
+  Future<void> Function(String path) onOpen,
+) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 6, 20, 10),
+            child: Text(
+              'Recent projects',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+          ),
+          for (final path in paths)
+            ListTile(
+              leading: const Icon(Icons.description_outlined),
+              title: Text(_fileName(path)),
+              subtitle: Text(
+                path,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              onTap: () {
+                Navigator.of(context).pop();
+                onOpen(path);
+              },
+            ),
+        ],
+      ),
+    ),
+  );
+}
+
+String _fileName(String path) {
+  final normalized = path.replaceAll('\\', '/');
+  return normalized.substring(normalized.lastIndexOf('/') + 1);
 }
