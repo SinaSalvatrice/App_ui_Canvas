@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../components/component_definition.dart';
 import '../components/component_registry.dart';
+import '../model/project_metadata.dart';
 import '../model/screen_preset.dart';
 import '../model/ui_screen.dart';
 import '../platform/designer_target.dart';
@@ -246,7 +247,7 @@ class _AndroidDesigner extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: GestureDetector(
-          onLongPress: () => _renameProjectDialog(context, controller),
+          onLongPress: () => _projectSettingsDialog(context, controller),
           child: Tooltip(
             message: projectPath ?? 'Unsaved project',
             child: Text(
@@ -520,7 +521,7 @@ class _DesktopTopBar extends StatelessWidget {
               message: projectPath ?? 'Unsaved project',
               child: InkWell(
                 borderRadius: BorderRadius.circular(6),
-                onTap: () => _renameProjectDialog(context, controller),
+                onTap: () => _projectSettingsDialog(context, controller),
                 child: Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
@@ -855,39 +856,134 @@ enum _ScreenMenuAction {
 }
 
 
-Future<void> _renameProjectDialog(
+Future<void> _projectSettingsDialog(
   BuildContext context,
   EditorController controller,
 ) async {
-  final textController =
+  final metadata = controller.project.metadata;
+  final nameController =
       TextEditingController(text: controller.project.name);
-  final name = await showDialog<String>(
+  final descriptionController =
+      TextEditingController(text: metadata.description);
+  final organizationController =
+      TextEditingController(text: metadata.organization);
+  final identifierController =
+      TextEditingController(text: metadata.appIdentifier);
+  final versionNameController =
+      TextEditingController(text: metadata.versionName);
+  final versionCodeController =
+      TextEditingController(text: metadata.versionCode.toString());
+
+  final save = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
-      title: const Text('Rename project'),
-      content: TextField(
-        controller: textController,
-        autofocus: true,
-        decoration: const InputDecoration(labelText: 'Project name'),
-        onSubmitted: (value) => Navigator.of(context).pop(value),
+      title: const Text('Project settings'),
+      content: SizedBox(
+        width: 480,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Project name',
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: descriptionController,
+                minLines: 2,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: 'Description',
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: organizationController,
+                decoration: const InputDecoration(
+                  labelText: 'Organization',
+                  hintText: 'Example Studio',
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: identifierController,
+                decoration: const InputDecoration(
+                  labelText: 'App identifier',
+                  hintText: 'com.example.myapp',
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: versionNameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Version',
+                        hintText: '1.0.0',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  SizedBox(
+                    width: 130,
+                    child: TextField(
+                      controller: versionCodeController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Build',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => Navigator.of(context).pop(false),
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: () =>
-              Navigator.of(context).pop(textController.text),
-          child: const Text('Rename'),
+          onPressed: () {
+            if (nameController.text.trim().isEmpty) return;
+            Navigator.of(context).pop(true);
+          },
+          child: const Text('Save'),
         ),
       ],
     ),
   );
-  textController.dispose();
-  if (name != null) {
-    controller.renameProject(name);
+
+  if (save == true) {
+    final versionCode =
+        int.tryParse(versionCodeController.text.trim()) ?? 1;
+    controller.updateProjectSettings(
+      name: nameController.text,
+      metadata: ProjectMetadata(
+        description: descriptionController.text.trim(),
+        organization: organizationController.text.trim(),
+        appIdentifier: identifierController.text.trim(),
+        versionName: versionNameController.text.trim().isEmpty
+            ? '1.0.0'
+            : versionNameController.text.trim(),
+        versionCode: versionCode < 1 ? 1 : versionCode,
+      ),
+    );
   }
+
+  nameController.dispose();
+  descriptionController.dispose();
+  organizationController.dispose();
+  identifierController.dispose();
+  versionNameController.dispose();
+  versionCodeController.dispose();
 }
 
 
