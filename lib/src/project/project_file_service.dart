@@ -27,7 +27,11 @@ class ProjectFileService {
       acceptedTypeGroups: const <XTypeGroup>[_typeGroup],
     );
     if (file == null) return null;
+    return openProjectPath(file.path);
+  }
 
+  Future<OpenedAppUiProject> openProjectPath(String path) async {
+    final file = XFile(path);
     final contents = await file.readAsString();
     final decoded = jsonDecode(contents);
     if (decoded is! Map) {
@@ -38,7 +42,7 @@ class ProjectFileService {
       project: AppUiProject.fromJson(
         Map<String, Object?>.from(decoded),
       ),
-      path: file.path,
+      path: path,
     );
   }
 
