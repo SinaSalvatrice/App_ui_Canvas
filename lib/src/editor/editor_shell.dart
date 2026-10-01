@@ -50,6 +50,13 @@ class _WindowsDesigner extends StatelessWidget {
   final EditorController controller;
   final List<ComponentDefinition> components;
 
+  void _nudgeIfCanvasFocused(double dx, double dy) {
+    final focusContext = FocusManager.instance.primaryFocus?.context;
+    final editing = focusContext?.findAncestorWidgetOfExactType<EditableText>() != null;
+    if (editing) return;
+    controller.nudgeSelected(dx, dy);
+  }
+
   @override
   Widget build(BuildContext context) {
     return CallbackShortcuts(
@@ -74,21 +81,21 @@ class _WindowsDesigner extends StatelessWidget {
         const SingleActivator(LogicalKeyboardKey.keyD, control: true):
             controller.duplicateSelected,
         const SingleActivator(LogicalKeyboardKey.arrowLeft):
-            () => controller.nudgeSelected(-1, 0),
+            () => _nudgeIfCanvasFocused(-1, 0),
         const SingleActivator(LogicalKeyboardKey.arrowRight):
-            () => controller.nudgeSelected(1, 0),
+            () => _nudgeIfCanvasFocused(1, 0),
         const SingleActivator(LogicalKeyboardKey.arrowUp):
-            () => controller.nudgeSelected(0, -1),
+            () => _nudgeIfCanvasFocused(0, -1),
         const SingleActivator(LogicalKeyboardKey.arrowDown):
-            () => controller.nudgeSelected(0, 1),
+            () => _nudgeIfCanvasFocused(0, 1),
         const SingleActivator(LogicalKeyboardKey.arrowLeft, shift: true):
-            () => controller.nudgeSelected(-10, 0),
+            () => _nudgeIfCanvasFocused(-10, 0),
         const SingleActivator(LogicalKeyboardKey.arrowRight, shift: true):
-            () => controller.nudgeSelected(10, 0),
+            () => _nudgeIfCanvasFocused(10, 0),
         const SingleActivator(LogicalKeyboardKey.arrowUp, shift: true):
-            () => controller.nudgeSelected(0, -10),
+            () => _nudgeIfCanvasFocused(0, -10),
         const SingleActivator(LogicalKeyboardKey.arrowDown, shift: true):
-            () => controller.nudgeSelected(0, 10),
+            () => _nudgeIfCanvasFocused(0, 10),
       },
       child: Focus(
         autofocus: true,
