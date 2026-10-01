@@ -141,7 +141,16 @@ class EditorController extends ChangeNotifier {
     resizeActiveScreen(preset.width, preset.height);
   }
 
-  void resizeActiveScreen(double width, double height) {
+  void toggleScreenOrientation() {
+    final screen = activeScreen;
+    resizeActiveScreen(screen.height, screen.width);
+  }
+
+  void resizeActiveScreen(
+    double width,
+    double height, {
+    bool commit = true,
+  }) {
     final screen = activeScreen;
     final nextWidth = width.clamp(240.0, 10000.0).toDouble();
     final nextHeight = height.clamp(240.0, 10000.0).toDouble();
@@ -165,7 +174,7 @@ class EditorController extends ChangeNotifier {
         height: nextHeight,
         nodes: nodes,
       ),
-      commit: true,
+      commit: commit,
     );
   }
 
