@@ -8,6 +8,7 @@ import 'package:window_manager/window_manager.dart';
 import '../editor/editor_controller.dart';
 import '../editor/editor_shell.dart';
 import '../model/app_ui_project.dart';
+import '../model/project_template.dart';
 import '../platform/designer_target.dart';
 import '../project/project_file_service.dart';
 import '../project/project_session_store.dart';
@@ -204,9 +205,86 @@ class _AppUiDesignerAppState extends State<AppUiDesignerApp>
 
   Future<void> _newProject() async {
     if (!await _canReplaceProject()) return;
+    final project = await _chooseNewProject();
+    if (project == null || !mounted) return;
+
     await _clearRecovery();
-    controller.replaceProject(AppUiProject.empty(widget.target));
+    controller.replaceProject(project);
     setState(() => _projectPath = null);
+  }
+
+  Future<AppUiProject?> _chooseNewProject() async {
+    if (!mounted) return null;
+    final templates = ProjectTemplate.forTarget(widget.target);
+    var selected = templates.first;
+    final nameController = TextEditingController(text: 'Untitled App');
+
+    final project = await showDialog<AppUiProject>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('New project'),
+          content: SizedBox(
+            width: 460,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: nameController,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Project name',
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'Template',
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                const SizedBox(height: 6),
+                for (final template in templates)
+                  Card(
+                    clipBehavior: Clip.antiAlias,
+                    child: ListTile(
+                      selected: selected.kind == template.kind,
+                      leading: Icon(
+                        template.kind == ProjectTemplateKind.blank
+                            ? Icons.crop_square
+                            : Icons.dashboard_customize_outlined,
+                      ),
+                      title: Text(template.label),
+                      subtitle: Text(template.description),
+                      onTap: () {
+                        setDialogState(() => selected = template);
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final name = nameController.text.trim();
+                if (name.isEmpty) return;
+                Navigator.of(context).pop(
+                  selected.createProject(name),
+                );
+              },
+              child: const Text('Create'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    nameController.dispose();
+    return project;
   }
 
   Future<void> _openProject() async {
