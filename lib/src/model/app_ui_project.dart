@@ -1,4 +1,6 @@
 import '../platform/designer_target.dart';
+import 'app_ui_project_migrator.dart';
+import 'project_metadata.dart';
 import 'ui_screen.dart';
 
 class AppUiProject {
@@ -9,9 +11,10 @@ class AppUiProject {
     required this.target,
     required this.initialScreenId,
     required this.screens,
+    this.metadata = const ProjectMetadata(),
   });
 
-  static const currentSchemaVersion = 1;
+  static const currentSchemaVersion = AppUiProjectMigrator.currentVersion;
 
   final int schemaVersion;
   final String id;
@@ -19,6 +22,7 @@ class AppUiProject {
   final DesignerTarget target;
   final String initialScreenId;
   final List<UiScreen> screens;
+  final ProjectMetadata metadata;
 
   factory AppUiProject.empty(DesignerTarget target) {
     final screen = UiScreen.empty(
@@ -41,31 +45,31 @@ class AppUiProject {
     String? name,
     String? initialScreenId,
     List<UiScreen>? screens,
+    ProjectMetadata? metadata,
   }) =>
       AppUiProject(
-        schemaVersion: schemaVersion,
+        schemaVersion: currentSchemaVersion,
         id: id ?? this.id,
         name: name ?? this.name,
         target: target,
         initialScreenId: initialScreenId ?? this.initialScreenId,
         screens: screens ?? this.screens,
+        metadata: metadata ?? this.metadata,
       );
 
   Map<String, Object?> toJson() => {
-        'schemaVersion': schemaVersion,
+        'schemaVersion': currentSchemaVersion,
         'id': id,
         'name': name,
         'target': target.name,
         'initialScreenId': initialScreenId,
+        'metadata': metadata.toJson(),
         'screens': screens.map((screen) => screen.toJson()).toList(),
       };
 
   factory AppUiProject.fromJson(Map<String, Object?> json) {
-    final version = json['schemaVersion'] as int;
-    if (version != currentSchemaVersion) {
-      throw FormatException('Unsupported .appui schema version: $version');
-    }
-    final screens = (json['screens']! as List)
+    final migrated = AppUiProjectMigrator.migrate(json);
+    final screens = (migrated['screens']! as List)
         .map(
           (item) => UiScreen.fromJson(
             Map<String, Object?>.from(item as Map),
@@ -76,19 +80,25 @@ class AppUiProject {
       throw const FormatException('.appui project has no screens.');
     }
 
-    final initialScreenId = json['initialScreenId']! as String;
+    final initialScreenId = migrated['initialScreenId']! as String;
     if (!screens.any((screen) => screen.id == initialScreenId)) {
       throw const FormatException(
         '.appui initialScreenId does not reference an existing screen.',
       );
     }
 
+    final metadataJson =
+        Map<String, Object?>.from(migrated['metadata']! as Map);
+
     return AppUiProject(
-      schemaVersion: version,
-      id: json['id']! as String,
-      name: json['name']! as String,
-      target: DesignerTarget.values.byName(json['target']! as String),
+      schemaVersion: currentSchemaVersion,
+      id: migrated['id']! as String,
+      name: migrated['name']! as String,
+      target: DesignerTarget.values.byName(
+        migrated['target']! as String,
+      ),
       initialScreenId: initialScreenId,
+      metadata: ProjectMetadata.fromJson(metadataJson),
       screens: screens,
     );
   }
