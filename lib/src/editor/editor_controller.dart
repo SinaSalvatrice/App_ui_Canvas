@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../components/component_definition.dart';
 import '../model/app_ui_project.dart';
 import '../model/project_metadata.dart';
+import '../model/ui_layout_spec.dart';
 import '../model/ui_node.dart';
 import '../model/ui_rect.dart';
 import '../model/ui_screen.dart';
@@ -137,11 +138,32 @@ class EditorController extends ChangeNotifier {
   }
 
   void applyScreenPreset(ScreenPreset preset) {
+    resizeActiveScreen(preset.width, preset.height);
+  }
+
+  void resizeActiveScreen(double width, double height) {
     final screen = activeScreen;
+    final nextWidth = width.clamp(240.0, 10000.0).toDouble();
+    final nextHeight = height.clamp(240.0, 10000.0).toDouble();
+    if (screen.width == nextWidth && screen.height == nextHeight) return;
+
+    final nodes = screen.nodes
+        .map(
+          (node) => _reflowNodeForScreenResize(
+            node,
+            oldWidth: screen.width,
+            oldHeight: screen.height,
+            newWidth: nextWidth,
+            newHeight: nextHeight,
+          ),
+        )
+        .toList();
+
     _replaceActiveScreen(
       screen.copyWith(
-        width: preset.width,
-        height: preset.height,
+        width: nextWidth,
+        height: nextHeight,
+        nodes: nodes,
       ),
       commit: true,
     );
@@ -337,10 +359,12 @@ class EditorController extends ChangeNotifier {
     if (_selectedNodeIds.isEmpty) return;
     final nodes = activeScreen.nodes.map((node) {
       if (!_selectedNodeIds.contains(node.id) || node.locked) return node;
-      return node.copyWith(
-        frame: node.frame.copyWith(
-          x: node.frame.x + dx,
-          y: node.frame.y + dy,
+      return _nodeWithSyncedInsets(
+        node.copyWith(
+          frame: node.frame.copyWith(
+            x: node.frame.x + dx,
+            y: node.frame.y + dy,
+          ),
         ),
       );
     }).toList();
@@ -407,10 +431,12 @@ class EditorController extends ChangeNotifier {
     final nodes = activeScreen.nodes.map((node) {
       final start = starts[node.id];
       if (start == null) return node;
-      return node.copyWith(
-        frame: node.frame.copyWith(
-          x: start.x + appliedDx,
-          y: start.y + appliedDy,
+      return _nodeWithSyncedInsets(
+        node.copyWith(
+          frame: node.frame.copyWith(
+            x: start.x + appliedDx,
+            y: start.y + appliedDy,
+          ),
         ),
       );
     }).toList();
@@ -618,18 +644,43 @@ class EditorController extends ChangeNotifier {
     final node = selectedNode;
     if (node == null || node.locked) return;
 
+    final nextFrame = node.frame.copyWith(
+      x: x,
+      y: y,
+      width: width == null ? null : node.layout.constrainWidth(width),
+      height: height == null ? null : node.layout.constrainHeight(height),
+    );
     _replaceNode(
-      node.copyWith(
-        frame: node.frame.copyWith(
-          x: x,
-          y: y,
-          width: width == null ? null : width.clamp(24.0, 10000.0).toDouble(),
-          height:
-              height == null ? null : height.clamp(24.0, 10000.0).toDouble(),
-        ),
-      ),
+      _nodeWithSyncedInsets(node.copyWith(frame: nextFrame)),
       commit: true,
     );
+  }
+
+  void updatePrimaryLayout(UiLayoutSpec layout) {
+    final node = selectedNode;
+    if (node == null || node.locked) return;
+
+    var nextLayout = layout;
+    if (layout.widthMode == UiSizeMode.fill) {
+      nextLayout = nextLayout.copyWith(
+        leftInset: node.frame.x,
+        rightInset:
+            activeScreen.width - node.frame.x - node.frame.width,
+      );
+    }
+    if (layout.heightMode == UiSizeMode.fill) {
+      nextLayout = nextLayout.copyWith(
+        topInset: node.frame.y,
+        bottomInset:
+            activeScreen.height - node.frame.y - node.frame.height,
+      );
+    }
+
+    final nextNode = _resolveNodeLayout(
+      node.copyWith(layout: nextLayout),
+      previousFrame: node.frame,
+    );
+    _replaceNode(nextNode, commit: true);
   }
 
   void updatePrimaryProperty(String key, Object? value) {
@@ -637,8 +688,9 @@ class EditorController extends ChangeNotifier {
     if (node == null || node.locked) return;
     final properties = Map<String, Object?>.from(node.properties);
     properties[key] = value;
+    final updated = node.copyWith(properties: properties);
     _replaceNode(
-      node.copyWith(properties: properties),
+      _resolveNodeLayout(updated, previousFrame: node.frame),
       commit: true,
     );
   }
@@ -928,6 +980,182 @@ class EditorController extends ChangeNotifier {
     );
   }
 
+  UiNode _reflowNodeForScreenResize(
+    UiNode node, {
+    required double oldWidth,
+    required double oldHeight,
+    required double newWidth,
+    required double newHeight,
+  }) {
+    final layout = node.layout;
+    final oldFrame = node.frame;
+
+    var width = oldFrame.width;
+    var height = oldFrame.height;
+
+    if (layout.widthMode == UiSizeMode.fill) {
+      final left = layout.leftInset ?? oldFrame.x;
+      final right =
+          layout.rightInset ?? oldWidth - oldFrame.x - oldFrame.width;
+      width = layout.constrainWidth(newWidth - left - right);
+    } else if (layout.widthMode == UiSizeMode.hug) {
+      width = layout.constrainWidth(_hugWidth(node));
+    } else {
+      width = layout.constrainWidth(width);
+    }
+
+    if (layout.heightMode == UiSizeMode.fill) {
+      final top = layout.topInset ?? oldFrame.y;
+      final bottom =
+          layout.bottomInset ?? oldHeight - oldFrame.y - oldFrame.height;
+      height = layout.constrainHeight(newHeight - top - bottom);
+    } else if (layout.heightMode == UiSizeMode.hug) {
+      height = layout.constrainHeight(_hugHeight(node));
+    } else {
+      height = layout.constrainHeight(height);
+    }
+
+    final x = layout.widthMode == UiSizeMode.fill
+        ? layout.leftInset ?? oldFrame.x
+        : switch (layout.horizontalAnchor) {
+            UiHorizontalAnchor.left => oldFrame.x,
+            UiHorizontalAnchor.center =>
+              oldFrame.x +
+                  (newWidth - oldWidth) / 2 +
+                  (oldFrame.width - width) / 2,
+            UiHorizontalAnchor.right =>
+              oldFrame.x +
+                  (newWidth - oldWidth) +
+                  oldFrame.width -
+                  width,
+          };
+
+    final y = layout.heightMode == UiSizeMode.fill
+        ? layout.topInset ?? oldFrame.y
+        : switch (layout.verticalAnchor) {
+            UiVerticalAnchor.top => oldFrame.y,
+            UiVerticalAnchor.center =>
+              oldFrame.y +
+                  (newHeight - oldHeight) / 2 +
+                  (oldFrame.height - height) / 2,
+            UiVerticalAnchor.bottom =>
+              oldFrame.y +
+                  (newHeight - oldHeight) +
+                  oldFrame.height -
+                  height,
+          };
+
+    return node.copyWith(
+      frame: oldFrame.copyWith(
+        x: x,
+        y: y,
+        width: width,
+        height: height,
+      ),
+    );
+  }
+
+  UiNode _resolveNodeLayout(
+    UiNode node, {
+    required UiRect previousFrame,
+  }) {
+    final layout = node.layout;
+    var width = node.frame.width;
+    var height = node.frame.height;
+
+    if (layout.widthMode == UiSizeMode.fill) {
+      final left = layout.leftInset ?? node.frame.x;
+      final right = layout.rightInset ??
+          activeScreen.width - node.frame.x - node.frame.width;
+      width = layout.constrainWidth(activeScreen.width - left - right);
+    } else if (layout.widthMode == UiSizeMode.hug) {
+      width = layout.constrainWidth(_hugWidth(node));
+    } else {
+      width = layout.constrainWidth(width);
+    }
+
+    if (layout.heightMode == UiSizeMode.fill) {
+      final top = layout.topInset ?? node.frame.y;
+      final bottom = layout.bottomInset ??
+          activeScreen.height - node.frame.y - node.frame.height;
+      height = layout.constrainHeight(activeScreen.height - top - bottom);
+    } else if (layout.heightMode == UiSizeMode.hug) {
+      height = layout.constrainHeight(_hugHeight(node));
+    } else {
+      height = layout.constrainHeight(height);
+    }
+
+    final x = switch (layout.horizontalAnchor) {
+      UiHorizontalAnchor.left => node.frame.x,
+      UiHorizontalAnchor.center =>
+        node.frame.x + (previousFrame.width - width) / 2,
+      UiHorizontalAnchor.right =>
+        node.frame.x + previousFrame.width - width,
+    };
+    final y = switch (layout.verticalAnchor) {
+      UiVerticalAnchor.top => node.frame.y,
+      UiVerticalAnchor.center =>
+        node.frame.y + (previousFrame.height - height) / 2,
+      UiVerticalAnchor.bottom =>
+        node.frame.y + previousFrame.height - height,
+    };
+
+    return _nodeWithSyncedInsets(
+      node.copyWith(
+        frame: node.frame.copyWith(
+          x: layout.widthMode == UiSizeMode.fill
+              ? layout.leftInset ?? x
+              : x,
+          y: layout.heightMode == UiSizeMode.fill
+              ? layout.topInset ?? y
+              : y,
+          width: width,
+          height: height,
+        ),
+      ),
+    );
+  }
+
+  UiNode _nodeWithSyncedInsets(UiNode node) {
+    var layout = node.layout;
+    if (layout.widthMode == UiSizeMode.fill) {
+      layout = layout.copyWith(
+        leftInset: node.frame.x,
+        rightInset:
+            activeScreen.width - node.frame.x - node.frame.width,
+      );
+    }
+    if (layout.heightMode == UiSizeMode.fill) {
+      layout = layout.copyWith(
+        topInset: node.frame.y,
+        bottomInset:
+            activeScreen.height - node.frame.y - node.frame.height,
+      );
+    }
+    return node.copyWith(layout: layout);
+  }
+
+  double _hugWidth(UiNode node) {
+    final text = node.properties['text']?.toString();
+    if (text == null || text.isEmpty) return node.frame.width;
+    final padding = switch (node.type) {
+      'button' || 'filledButton' => 40.0,
+      'textField' => 32.0,
+      _ => 20.0,
+    };
+    return text.length * 8.0 + padding;
+  }
+
+  double _hugHeight(UiNode node) {
+    return switch (node.type) {
+      'button' || 'filledButton' => 40.0,
+      'textField' => 48.0,
+      'switch' => 40.0,
+      'text' => 32.0,
+      _ => node.frame.height,
+    };
+  }
+
   UiNode? _nodeById(String id) {
     for (final node in activeScreen.nodes) {
       if (node.id == id) return node;
@@ -950,6 +1178,7 @@ class EditorController extends ChangeNotifier {
       rotation: source.rotation,
       visible: source.visible,
       locked: source.locked,
+      layout: source.layout,
       properties: Map<String, Object?>.from(source.properties),
       children: source.children
           .map((child) => _cloneWithNewIds(child, offset: 0))
