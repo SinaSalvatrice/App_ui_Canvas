@@ -19,7 +19,8 @@ enum EditorAlignment {
 
 class EditorController extends ChangeNotifier {
   EditorController(this._project)
-      : _cleanProjectJson = jsonEncode(_project.toJson()) {
+      : _activeScreenId = _project.initialScreenId,
+        _cleanProjectJson = jsonEncode(_project.toJson()) {
     _history.add(_project);
   }
 
@@ -29,6 +30,7 @@ class EditorController extends ChangeNotifier {
   final List<AppUiProject> _history = [];
   int _historyIndex = 0;
   String _cleanProjectJson;
+  String _activeScreenId;
 
   final Set<String> _selectedNodeIds = <String>{};
   String? _primarySelectedNodeId;
@@ -62,8 +64,10 @@ class EditorController extends ChangeNotifier {
   double? get activeGuideX => _activeGuideX;
   double? get activeGuideY => _activeGuideY;
 
+  String get activeScreenId => _activeScreenId;
+
   UiScreen get activeScreen => _project.screens.firstWhere(
-        (screen) => screen.id == _project.initialScreenId,
+        (screen) => screen.id == _activeScreenId,
       );
 
   UiNode? get selectedNode {
