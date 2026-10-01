@@ -99,13 +99,13 @@ class ProjectTemplate {
           height: 720,
           nodes: [
             const UiNode(
-              id: 'node_menu_bar',
+              id: 'node_menu_bar_\$screenId',
               type: 'menuBar',
               name: 'Menu bar',
               frame: UiRect(x: 0, y: 0, width: 1280, height: 40),
             ),
             const UiNode(
-              id: 'node_navigation',
+              id: 'node_navigation_\$screenId',
               type: 'navigationRail',
               name: 'Navigation rail',
               frame: UiRect(x: 0, y: 40, width: 220, height: 680),
@@ -158,7 +158,7 @@ class ProjectTemplate {
           height: 915,
           nodes: [
             const UiNode(
-              id: 'node_app_bar',
+              id: 'node_app_bar_\$screenId',
               type: 'appBar',
               name: 'App bar',
               frame: UiRect(x: 0, y: 0, width: 412, height: 64),
@@ -176,7 +176,7 @@ class ProjectTemplate {
               properties: {'text': title},
             ),
             const UiNode(
-              id: 'node_bottom_navigation',
+              id: 'node_bottom_navigation_\$screenId',
               type: 'bottomNavigation',
               name: 'Bottom navigation',
               frame: UiRect(x: 0, y: 835, width: 412, height: 80),
