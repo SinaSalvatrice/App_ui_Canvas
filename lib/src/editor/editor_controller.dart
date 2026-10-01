@@ -580,12 +580,14 @@ class EditorController extends ChangeNotifier {
     }
 
     _replaceNode(
-      source.copyWith(
-        frame: source.frame.copyWith(
-          x: snapEnabled ? _snap(x) : x,
-          y: snapEnabled ? _snap(y) : y,
-          width: width,
-          height: height,
+      _nodeWithSyncedInsets(
+        source.copyWith(
+          frame: source.frame.copyWith(
+            x: snapEnabled ? _snap(x) : x,
+            y: snapEnabled ? _snap(y) : y,
+            width: width,
+            height: height,
+          ),
         ),
       ),
       commit: false,
@@ -650,7 +652,9 @@ class EditorController extends ChangeNotifier {
           y = bounds.y + bounds.height - node.frame.height;
           break;
       }
-      return node.copyWith(frame: node.frame.copyWith(x: x, y: y));
+      return _nodeWithSyncedInsets(
+        node.copyWith(frame: node.frame.copyWith(x: x, y: y)),
+      );
     }).toList();
 
     _replaceActiveScreen(activeScreen.copyWith(nodes: nodes), commit: true);
@@ -1221,11 +1225,10 @@ class EditorController extends ChangeNotifier {
   }
 
   void _replaceNode(UiNode replacement, {required bool commit}) {
-    final normalized = _nodeWithSyncedInsets(replacement);
     _replaceActiveScreen(
       activeScreen.copyWith(
         nodes: activeScreen.nodes
-            .map((node) => node.id == normalized.id ? normalized : node)
+            .map((node) => node.id == replacement.id ? replacement : node)
             .toList(),
       ),
       commit: commit,
