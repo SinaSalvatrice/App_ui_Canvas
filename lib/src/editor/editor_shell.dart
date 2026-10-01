@@ -80,6 +80,8 @@ class _WindowsDesigner extends StatelessWidget {
             controller.deleteSelected,
         const SingleActivator(LogicalKeyboardKey.keyD, control: true):
             controller.duplicateSelected,
+        const SingleActivator(LogicalKeyboardKey.keyA, control: true):
+            controller.selectAll,
         const SingleActivator(LogicalKeyboardKey.arrowLeft):
             () => _nudgeIfCanvasFocused(-1, 0),
         const SingleActivator(LogicalKeyboardKey.arrowRight):

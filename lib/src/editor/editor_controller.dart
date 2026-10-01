@@ -8,11 +8,22 @@ import '../model/ui_node.dart';
 import '../model/ui_rect.dart';
 import '../model/ui_screen.dart';
 
+enum EditorAlignment {
+  left,
+  horizontalCenter,
+  right,
+  top,
+  verticalCenter,
+  bottom,
+}
+
 class EditorController extends ChangeNotifier {
   EditorController(this._project)
       : _cleanProjectJson = jsonEncode(_project.toJson()) {
     _history.add(_project);
   }
+
+  static const double _smartGuideThreshold = 6;
 
   AppUiProject _project;
   final List<AppUiProject> _history = [];
@@ -32,6 +43,9 @@ class EditorController extends ChangeNotifier {
   double _resizeDeltaX = 0;
   double _resizeDeltaY = 0;
 
+  double? _activeGuideX;
+  double? _activeGuideY;
+
   bool gridEnabled = true;
   bool snapEnabled = false;
   bool guidesEnabled = true;
@@ -45,6 +59,8 @@ class EditorController extends ChangeNotifier {
   bool get canRedo => _historyIndex < _history.length - 1;
   bool get canPaste => _clipboard.isNotEmpty;
   bool get isDirty => jsonEncode(_project.toJson()) != _cleanProjectJson;
+  double? get activeGuideX => _activeGuideX;
+  double? get activeGuideY => _activeGuideY;
 
   UiScreen get activeScreen => _project.screens.firstWhere(
         (screen) => screen.id == _project.initialScreenId,
@@ -54,6 +70,14 @@ class EditorController extends ChangeNotifier {
     final id = _primarySelectedNodeId;
     if (id == null) return null;
     return _nodeById(id);
+  }
+
+  UiRect? get selectionBounds {
+    final frames = activeScreen.nodes
+        .where((node) => _selectedNodeIds.contains(node.id) && node.visible)
+        .map((node) => node.frame)
+        .toList();
+    return _boundsOf(frames);
   }
 
   bool isSelected(String id) => _selectedNodeIds.contains(id);
@@ -78,6 +102,7 @@ class EditorController extends ChangeNotifier {
   void setGuidesEnabled(bool value) {
     if (guidesEnabled == value) return;
     guidesEnabled = value;
+    if (!value) _clearActiveGuides();
     notifyListeners();
   }
 
@@ -95,10 +120,7 @@ class EditorController extends ChangeNotifier {
     }
 
     if (!additive) {
-      _selectedNodeIds
-        ..clear()
-        ..add(id);
-      _primarySelectedNodeId = id;
+      _selectOnly(id);
       notifyListeners();
       return;
     }
@@ -113,6 +135,18 @@ class EditorController extends ChangeNotifier {
       _selectedNodeIds.add(id);
       _primarySelectedNodeId = id;
     }
+    notifyListeners();
+  }
+
+  void selectAll() {
+    final ids = activeScreen.nodes
+        .where((node) => node.visible)
+        .map((node) => node.id)
+        .toList();
+    _selectedNodeIds
+      ..clear()
+      ..addAll(ids);
+    _primarySelectedNodeId = ids.isEmpty ? null : ids.last;
     notifyListeners();
   }
 
@@ -162,6 +196,7 @@ class EditorController extends ChangeNotifier {
     };
     _moveDeltaX = 0;
     _moveDeltaY = 0;
+    _clearActiveGuides();
   }
 
   void moveSelectedBy(double dx, double dy) {
@@ -175,15 +210,45 @@ class EditorController extends ChangeNotifier {
 
     _moveDeltaX += dx;
     _moveDeltaY += dy;
+
     final starts = _moveStartFrames!;
+    final startBounds = _boundsOf(starts.values);
+    if (startBounds == null) return;
+
+    var appliedDx = _moveDeltaX;
+    var appliedDy = _moveDeltaY;
+
+    if (snapEnabled) {
+      appliedDx = _snap(startBounds.x + appliedDx) - startBounds.x;
+      appliedDy = _snap(startBounds.y + appliedDy) - startBounds.y;
+    }
+
+    if (guidesEnabled) {
+      final proposed = startBounds.copyWith(
+        x: startBounds.x + appliedDx,
+        y: startBounds.y + appliedDy,
+      );
+      final xMatch = _findSmartGuide(
+        moving: [proposed.x, proposed.x + proposed.width / 2, proposed.x + proposed.width],
+        targets: _verticalGuideTargets(),
+      );
+      final yMatch = _findSmartGuide(
+        moving: [proposed.y, proposed.y + proposed.height / 2, proposed.y + proposed.height],
+        targets: _horizontalGuideTargets(),
+      );
+      _activeGuideX = xMatch?.target;
+      _activeGuideY = yMatch?.target;
+      if (xMatch != null) appliedDx += xMatch.correction;
+      if (yMatch != null) appliedDy += yMatch.correction;
+    }
 
     final nodes = activeScreen.nodes.map((node) {
       final start = starts[node.id];
       if (start == null) return node;
       return node.copyWith(
         frame: node.frame.copyWith(
-          x: _snap(start.x + _moveDeltaX),
-          y: _snap(start.y + _moveDeltaY),
+          x: start.x + appliedDx,
+          y: start.y + appliedDy,
         ),
       );
     }).toList();
@@ -201,6 +266,7 @@ class EditorController extends ChangeNotifier {
     _resizeStartFrame = source.frame;
     _resizeDeltaX = 0;
     _resizeDeltaY = 0;
+    _clearActiveGuides();
   }
 
   void resizeNodeBy(
@@ -257,6 +323,47 @@ class EditorController extends ChangeNotifier {
       height = _snapSize(height, min: 24);
     }
 
+    if (guidesEnabled) {
+      if (left || right) {
+        final edge = left ? x : x + width;
+        final match = _findSmartGuide(
+          moving: [edge],
+          targets: _verticalGuideTargets(excludingId: id),
+        );
+        _activeGuideX = match?.target;
+        if (match != null) {
+          if (left) {
+            final fixedRight = x + width;
+            x += match.correction;
+            width = (fixedRight - x).clamp(24.0, 10000.0).toDouble();
+          } else {
+            width = (width + match.correction)
+                .clamp(24.0, 10000.0)
+                .toDouble();
+          }
+        }
+      }
+      if (top || bottom) {
+        final edge = top ? y : y + height;
+        final match = _findSmartGuide(
+          moving: [edge],
+          targets: _horizontalGuideTargets(excludingId: id),
+        );
+        _activeGuideY = match?.target;
+        if (match != null) {
+          if (top) {
+            final fixedBottom = y + height;
+            y += match.correction;
+            height = (fixedBottom - y).clamp(24.0, 10000.0).toDouble();
+          } else {
+            height = (height + match.correction)
+                .clamp(24.0, 10000.0)
+                .toDouble();
+          }
+        }
+      }
+    }
+
     _replaceNode(
       source.copyWith(
         frame: source.frame.copyWith(
@@ -268,6 +375,70 @@ class EditorController extends ChangeNotifier {
       ),
       commit: false,
     );
+  }
+
+  void rotateNodeTo(String id, double degrees, {bool snap15 = false}) {
+    final node = _nodeById(id);
+    if (node == null || node.locked) return;
+    var next = degrees % 360;
+    if (next < 0) next += 360;
+    if (snap15) next = (next / 15).round() * 15.0;
+    _replaceNode(node.copyWith(rotation: next), commit: false);
+  }
+
+  void updatePrimaryRotation(double degrees) {
+    final node = selectedNode;
+    if (node == null || node.locked) return;
+    var next = degrees % 360;
+    if (next < 0) next += 360;
+    _replaceNode(node.copyWith(rotation: next), commit: true);
+  }
+
+  void alignSelected(EditorAlignment alignment) {
+    final selected = activeScreen.nodes
+        .where((node) => _selectedNodeIds.contains(node.id) && !node.locked)
+        .toList();
+    if (selected.isEmpty) return;
+
+    final bounds = selected.length == 1
+        ? UiRect(
+            x: 0,
+            y: 0,
+            width: activeScreen.width,
+            height: activeScreen.height,
+          )
+        : _boundsOf(selected.map((node) => node.frame));
+    if (bounds == null) return;
+
+    final nodes = activeScreen.nodes.map((node) {
+      if (!selected.any((item) => item.id == node.id)) return node;
+      var x = node.frame.x;
+      var y = node.frame.y;
+
+      switch (alignment) {
+        case EditorAlignment.left:
+          x = bounds.x;
+          break;
+        case EditorAlignment.horizontalCenter:
+          x = bounds.x + (bounds.width - node.frame.width) / 2;
+          break;
+        case EditorAlignment.right:
+          x = bounds.x + bounds.width - node.frame.width;
+          break;
+        case EditorAlignment.top:
+          y = bounds.y;
+          break;
+        case EditorAlignment.verticalCenter:
+          y = bounds.y + (bounds.height - node.frame.height) / 2;
+          break;
+        case EditorAlignment.bottom:
+          y = bounds.y + bounds.height - node.frame.height;
+          break;
+      }
+      return node.copyWith(frame: node.frame.copyWith(x: x, y: y));
+    }).toList();
+
+    _replaceActiveScreen(activeScreen.copyWith(nodes: nodes), commit: true);
   }
 
   void commitLiveEdit() {
@@ -485,6 +656,79 @@ class EditorController extends ChangeNotifier {
         .toDouble();
   }
 
+  List<double> _verticalGuideTargets({String? excludingId}) {
+    final targets = <double>[0, activeScreen.width / 2, activeScreen.width];
+    for (final node in activeScreen.nodes) {
+      if (!node.visible ||
+          node.id == excludingId ||
+          _selectedNodeIds.contains(node.id)) {
+        continue;
+      }
+      targets.addAll([
+        node.frame.x,
+        node.frame.x + node.frame.width / 2,
+        node.frame.x + node.frame.width,
+      ]);
+    }
+    return targets;
+  }
+
+  List<double> _horizontalGuideTargets({String? excludingId}) {
+    final targets = <double>[0, activeScreen.height / 2, activeScreen.height];
+    for (final node in activeScreen.nodes) {
+      if (!node.visible ||
+          node.id == excludingId ||
+          _selectedNodeIds.contains(node.id)) {
+        continue;
+      }
+      targets.addAll([
+        node.frame.y,
+        node.frame.y + node.frame.height / 2,
+        node.frame.y + node.frame.height,
+      ]);
+    }
+    return targets;
+  }
+
+  _SnapMatch? _findSmartGuide({
+    required List<double> moving,
+    required List<double> targets,
+  }) {
+    _SnapMatch? best;
+    for (final movingValue in moving) {
+      for (final target in targets) {
+        final correction = target - movingValue;
+        if (correction.abs() > _smartGuideThreshold) continue;
+        if (best == null || correction.abs() < best.correction.abs()) {
+          best = _SnapMatch(correction: correction, target: target);
+        }
+      }
+    }
+    return best;
+  }
+
+  UiRect? _boundsOf(Iterable<UiRect> frames) {
+    final list = frames.toList();
+    if (list.isEmpty) return null;
+    var left = list.first.x;
+    var top = list.first.y;
+    var right = list.first.x + list.first.width;
+    var bottom = list.first.y + list.first.height;
+
+    for (final frame in list.skip(1)) {
+      if (frame.x < left) left = frame.x;
+      if (frame.y < top) top = frame.y;
+      if (frame.x + frame.width > right) right = frame.x + frame.width;
+      if (frame.y + frame.height > bottom) bottom = frame.y + frame.height;
+    }
+    return UiRect(
+      x: left,
+      y: top,
+      width: right - left,
+      height: bottom - top,
+    );
+  }
+
   UiNode? _nodeById(String id) {
     for (final node in activeScreen.nodes) {
       if (node.id == id) return node;
@@ -504,6 +748,7 @@ class EditorController extends ChangeNotifier {
         x: source.frame.x + offset,
         y: source.frame.y + offset,
       ),
+      rotation: source.rotation,
       visible: source.visible,
       locked: source.locked,
       properties: Map<String, Object?>.from(source.properties),
@@ -559,6 +804,11 @@ class EditorController extends ChangeNotifier {
     _historyIndex = _history.length - 1;
   }
 
+  void _clearActiveGuides() {
+    _activeGuideX = null;
+    _activeGuideY = null;
+  }
+
   void _resetLiveTransform() {
     _moveStartFrames = null;
     _moveDeltaX = 0;
@@ -567,6 +817,7 @@ class EditorController extends ChangeNotifier {
     _resizeStartFrame = null;
     _resizeDeltaX = 0;
     _resizeDeltaY = 0;
+    _clearActiveGuides();
   }
 
   void _ensureSelectionExists() {
@@ -578,4 +829,14 @@ class EditorController extends ChangeNotifier {
           _selectedNodeIds.isEmpty ? null : _selectedNodeIds.last;
     }
   }
+}
+
+class _SnapMatch {
+  const _SnapMatch({
+    required this.correction,
+    required this.target,
+  });
+
+  final double correction;
+  final double target;
 }

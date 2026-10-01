@@ -30,9 +30,9 @@
 - [x] minimum sizes
 - [x] resize at canvas zoom
 - [x] locked nodes protected from move / resize / delete
-- [ ] rotation
+- [x] rotation + 15 degree Shift snapping
 - [ ] group resize
-- [x] keyboard nudging (1 unit, Shift = 10)
+- [x] keyboard nudging (1 unit, Shift = 10)\n- [x] multi-selection bounding frame\n- [x] align left / center / right / top / middle / bottom\n- [x] Ctrl+A select all
 
 ### Canvas
 - [x] central TransformationController
@@ -46,7 +46,7 @@
 - [x] grid
 - [x] grid snapping
 - [x] center guides
-- [ ] smart alignment guides
+- [x] smart alignment guides
 - [ ] ruler
 
 ### Editor operations

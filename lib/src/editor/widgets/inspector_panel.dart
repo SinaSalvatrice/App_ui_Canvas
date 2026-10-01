@@ -111,6 +111,60 @@ class InspectorPanel extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 8),
+        WheelNumberField(
+          label: 'Rotation',
+          value: node.rotation,
+          min: 0,
+          max: 359,
+          enabled: editable,
+          onChanged: controller.updatePrimaryRotation,
+        ),
+        const SizedBox(height: 14),
+        Text('Align', style: Theme.of(context).textTheme.labelLarge),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 4,
+          runSpacing: 4,
+          children: [
+            _AlignButton(
+              tooltip: 'Align left',
+              icon: Icons.align_horizontal_left,
+              onPressed: () =>
+                  controller.alignSelected(EditorAlignment.left),
+            ),
+            _AlignButton(
+              tooltip: 'Center horizontally',
+              icon: Icons.align_horizontal_center,
+              onPressed: () =>
+                  controller.alignSelected(EditorAlignment.horizontalCenter),
+            ),
+            _AlignButton(
+              tooltip: 'Align right',
+              icon: Icons.align_horizontal_right,
+              onPressed: () =>
+                  controller.alignSelected(EditorAlignment.right),
+            ),
+            _AlignButton(
+              tooltip: 'Align top',
+              icon: Icons.align_vertical_top,
+              onPressed: () =>
+                  controller.alignSelected(EditorAlignment.top),
+            ),
+            _AlignButton(
+              tooltip: 'Center vertically',
+              icon: Icons.align_vertical_center,
+              onPressed: () =>
+                  controller.alignSelected(EditorAlignment.verticalCenter),
+            ),
+            _AlignButton(
+              tooltip: 'Align bottom',
+              icon: Icons.align_vertical_bottom,
+              onPressed: () =>
+                  controller.alignSelected(EditorAlignment.bottom),
+            ),
+          ],
+        ),
         if (node.properties.containsKey('text')) ...[
           const Divider(height: 26),
           Text('Content', style: Theme.of(context).textTheme.labelLarge),
@@ -131,6 +185,27 @@ class InspectorPanel extends StatelessWidget {
         const Divider(height: 26),
         _NodeActions(controller: controller, node: node),
       ],
+    );
+  }
+}
+
+class _AlignButton extends StatelessWidget {
+  const _AlignButton({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton.outlined(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18),
     );
   }
 }

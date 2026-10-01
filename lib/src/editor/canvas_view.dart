@@ -1,8 +1,11 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../model/ui_node.dart';
+import '../model/ui_rect.dart';
 import '../platform/designer_target.dart';
 import 'editor_controller.dart';
 
@@ -36,6 +39,8 @@ class _CanvasViewState extends State<CanvasView> {
   Widget build(BuildContext context) {
     final screen = widget.controller.activeScreen;
     final isWindows = widget.target == DesignerTarget.windows;
+    final multiBounds =
+        widget.controller.selectedCount > 1 ? widget.controller.selectionBounds : null;
 
     return Stack(
       children: [
@@ -85,7 +90,7 @@ class _CanvasViewState extends State<CanvasView> {
                           const Positioned.fill(
                             child: IgnorePointer(
                               child: CustomPaint(
-                                painter: _GuidePainter(),
+                                painter: _CenterGuidePainter(),
                               ),
                             ),
                           ),
@@ -127,9 +132,42 @@ class _CanvasViewState extends State<CanvasView> {
                                 bottom: bottom,
                               ),
                               onResizeEnd: widget.controller.commitLiveEdit,
+                              onRotateGlobal: (globalPosition) =>
+                                  _rotateNodeFromGlobal(node, globalPosition),
+                              onRotateEnd: widget.controller.commitLiveEdit,
                               onContextMenu: (position) =>
                                   _showNodeMenu(context, position, node),
                             ),
+                        if (multiBounds != null)
+                          _MultiSelectionFrame(
+                            bounds: multiBounds,
+                            scale: _scale,
+                            count: widget.controller.selectedCount,
+                          ),
+                        if (widget.controller.activeGuideX case final x?)
+                          Positioned(
+                            left: x,
+                            top: 0,
+                            bottom: 0,
+                            child: IgnorePointer(
+                              child: Container(
+                                width: 1 / _scale,
+                                color: Theme.of(context).colorScheme.tertiary,
+                              ),
+                            ),
+                          ),
+                        if (widget.controller.activeGuideY case final y?)
+                          Positioned(
+                            top: y,
+                            left: 0,
+                            right: 0,
+                            child: IgnorePointer(
+                              child: Container(
+                                height: 1 / _scale,
+                                color: Theme.of(context).colorScheme.tertiary,
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -213,6 +251,26 @@ class _CanvasViewState extends State<CanvasView> {
           ),
         ),
       ],
+    );
+  }
+
+  void _rotateNodeFromGlobal(UiNode node, Offset globalPosition) {
+    final render = _viewportKey.currentContext?.findRenderObject();
+    if (render is! RenderBox) return;
+
+    final viewportLocal = render.globalToLocal(globalPosition);
+    final scene = _transform.toScene(viewportLocal);
+    final center = Offset(
+      node.frame.x + node.frame.width / 2,
+      node.frame.y + node.frame.height / 2,
+    );
+    final radians =
+        math.atan2(scene.dy - center.dy, scene.dx - center.dx) + math.pi / 2;
+    final degrees = radians * 180 / math.pi;
+    widget.controller.rotateNodeTo(
+      node.id,
+      degrees,
+      snap15: HardwareKeyboard.instance.isShiftPressed,
     );
   }
 
@@ -434,6 +492,8 @@ class _NodeView extends StatelessWidget {
     required this.onResizeStart,
     required this.onResize,
     required this.onResizeEnd,
+    required this.onRotateGlobal,
+    required this.onRotateEnd,
     required this.onContextMenu,
   });
 
@@ -455,6 +515,8 @@ class _NodeView extends StatelessWidget {
     required bool bottom,
   }) onResize;
   final VoidCallback onResizeEnd;
+  final ValueChanged<Offset> onRotateGlobal;
+  final VoidCallback onRotateEnd;
   final ValueChanged<Offset> onContextMenu;
 
   bool get _additiveSelection {
@@ -469,72 +531,186 @@ class _NodeView extends StatelessWidget {
       top: node.frame.y,
       width: node.frame.width,
       height: node.frame.height,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => onSelect(_additiveSelection),
-        onSecondaryTapDown: (details) =>
-            onContextMenu(details.globalPosition),
-        onLongPressStart: (details) =>
-            onContextMenu(details.globalPosition),
-        onPanStart: node.locked
-            ? null
-            : (_) {
-                if (!selected) onSelect(_additiveSelection);
-                onMoveStart();
-              },
-        onPanUpdate: node.locked
-            ? null
-            : (details) => onMove(
-                  details.delta.dx / scale,
-                  details.delta.dy / scale,
-                ),
-        onPanEnd: node.locked ? null : (_) => onMoveEnd(),
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: node.locked
-                      ? const Color(0xFFEDEDED)
-                      : const Color(0xFFF5F5F5),
-                  border: Border.all(
-                    color: selected
-                        ? Theme.of(context).colorScheme.primary
-                        : Colors.black26,
-                    width: selected ? 2 / scale : 1 / scale,
+      child: Transform.rotate(
+        angle: node.rotation * math.pi / 180,
+        alignment: Alignment.center,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => onSelect(_additiveSelection),
+          onSecondaryTapDown: (details) =>
+              onContextMenu(details.globalPosition),
+          onLongPressStart: (details) =>
+              onContextMenu(details.globalPosition),
+          onPanStart: node.locked
+              ? null
+              : (_) {
+                  if (!selected) onSelect(_additiveSelection);
+                  onMoveStart();
+                },
+          onPanUpdate: node.locked
+              ? null
+              : (details) => onMove(
+                    details.delta.dx / scale,
+                    details.delta.dy / scale,
+                  ),
+          onPanEnd: node.locked ? null : (_) => onMoveEnd(),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: node.locked
+                        ? const Color(0xFFEDEDED)
+                        : const Color(0xFFF5F5F5),
+                    border: Border.all(
+                      color: selected
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.black26,
+                      width: selected ? 2 / scale : 1 / scale,
+                    ),
+                  ),
+                  child: Stack(
+                    children: [
+                      Center(
+                        child: Text(
+                          (node.properties['text'] ?? node.name ?? node.type)
+                              .toString(),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                      if (node.locked)
+                        const Positioned(
+                          top: 4,
+                          right: 4,
+                          child: Icon(Icons.lock, size: 14),
+                        ),
+                    ],
                   ),
                 ),
-                child: Stack(
-                  children: [
-                    Center(
-                      child: Text(
-                        (node.properties['text'] ?? node.name ?? node.type)
-                            .toString(),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                    if (node.locked)
-                      const Positioned(
-                        top: 4,
-                        right: 4,
-                        child: Icon(Icons.lock, size: 14),
-                      ),
-                  ],
+              ),
+              if (primary && !node.locked) ...[
+                for (final handle in _ResizeHandle.values)
+                  _ResizeGrip(
+                    handle: handle,
+                    scale: scale,
+                    node: node,
+                    onResizeStart: onResizeStart,
+                    onResize: onResize,
+                    onResizeEnd: onResizeEnd,
+                  ),
+                _RotationGrip(
+                  scale: scale,
+                  node: node,
+                  onRotateGlobal: onRotateGlobal,
+                  onRotateEnd: onRotateEnd,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RotationGrip extends StatelessWidget {
+  const _RotationGrip({
+    required this.scale,
+    required this.node,
+    required this.onRotateGlobal,
+    required this.onRotateEnd,
+  });
+
+  final double scale;
+  final UiNode node;
+  final ValueChanged<Offset> onRotateGlobal;
+  final VoidCallback onRotateEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    final hitSize = 38 / scale;
+    final visualSize = 14 / scale;
+    final stem = 24 / scale;
+
+    return Positioned(
+      left: node.frame.width / 2 - hitSize / 2,
+      top: -stem - hitSize,
+      width: hitSize,
+      height: hitSize + stem,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onPanUpdate: (details) => onRotateGlobal(details.globalPosition),
+        onPanEnd: (_) => onRotateEnd(),
+        child: Column(
+          children: [
+            Container(
+              width: visualSize,
+              height: visualSize,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Theme.of(context).colorScheme.surface,
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.primary,
+                  width: 2 / scale,
                 ),
               ),
             ),
-            if (primary && !node.locked)
-              for (final handle in _ResizeHandle.values)
-                _ResizeGrip(
-                  handle: handle,
-                  scale: scale,
-                  node: node,
-                  onResizeStart: onResizeStart,
-                  onResize: onResize,
-                  onResizeEnd: onResizeEnd,
-                ),
+            Container(
+              width: 1 / scale,
+              height: stem,
+              color: Theme.of(context).colorScheme.primary,
+            ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MultiSelectionFrame extends StatelessWidget {
+  const _MultiSelectionFrame({
+    required this.bounds,
+    required this.scale,
+    required this.count,
+  });
+
+  final UiRect bounds;
+  final double scale;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: bounds.x,
+      top: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      child: IgnorePointer(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: Theme.of(context).colorScheme.secondary,
+              width: 1.5 / scale,
+            ),
+          ),
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: Transform.translate(
+              offset: Offset(0, -24 / scale),
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: 6 / scale,
+                  vertical: 2 / scale,
+                ),
+                color: Theme.of(context).colorScheme.secondaryContainer,
+                child: Text(
+                  '$count selected',
+                  style: TextStyle(fontSize: 10 / scale),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -677,8 +853,8 @@ class _GridPainter extends CustomPainter {
       oldDelegate.step != step;
 }
 
-class _GuidePainter extends CustomPainter {
-  const _GuidePainter();
+class _CenterGuidePainter extends CustomPainter {
+  const _CenterGuidePainter();
 
   @override
   void paint(Canvas canvas, Size size) {

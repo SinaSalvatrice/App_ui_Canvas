@@ -96,6 +96,32 @@ void main() {
     expect(restored.locked, isTrue);
   });
 
+  test('rotation survives node json roundtrip', () {
+    const node = UiNode(
+      id: 'node_rotate',
+      type: 'text',
+      frame: UiRect(x: 1, y: 2, width: 30, height: 40),
+      rotation: 37.5,
+    );
+
+    final restored = UiNode.fromJson(node.toJson());
+    expect(restored.rotation, 37.5);
+  });
+
+  test('rotation snap rounds to fifteen degrees', () {
+    final controller = EditorController(
+      AppUiProject.empty(DesignerTarget.windows),
+    );
+    final component = ComponentRegistry.forTarget(DesignerTarget.windows).first;
+    controller.addComponent(component);
+    final id = controller.selectedNodeId!;
+
+    controller.rotateNodeTo(id, 22, snap15: true);
+    controller.commitLiveEdit();
+
+    expect(controller.selectedNode!.rotation, 15);
+  });
+
   test('copy paste creates new ids and keeps source', () {
     final controller = EditorController(
       AppUiProject.empty(DesignerTarget.windows),
@@ -132,5 +158,18 @@ void main() {
 
     expect(controller.selectedNode!.frame.x, before.x);
     expect(controller.selectedNode!.frame.y, before.y);
+  });
+  test('select all selects every visible node', () {
+    final controller = EditorController(
+      AppUiProject.empty(DesignerTarget.windows),
+    );
+    final components = ComponentRegistry.forTarget(DesignerTarget.windows);
+    controller.addComponent(components[0]);
+    controller.addComponent(components[1]);
+
+    controller.selectAll();
+
+    expect(controller.selectedCount, 2);
+    expect(controller.selectionBounds, isNotNull);
   });
 }

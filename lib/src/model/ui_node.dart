@@ -6,6 +6,7 @@ class UiNode {
     required this.type,
     required this.frame,
     this.name,
+    this.rotation = 0,
     this.visible = true,
     this.locked = false,
     this.properties = const {},
@@ -16,6 +17,7 @@ class UiNode {
   final String type;
   final String? name;
   final UiRect frame;
+  final double rotation;
   final bool visible;
   final bool locked;
   final Map<String, Object?> properties;
@@ -24,6 +26,7 @@ class UiNode {
   UiNode copyWith({
     String? name,
     UiRect? frame,
+    double? rotation,
     bool? visible,
     bool? locked,
     Map<String, Object?>? properties,
@@ -34,6 +37,7 @@ class UiNode {
       type: type,
       name: name ?? this.name,
       frame: frame ?? this.frame,
+      rotation: rotation ?? this.rotation,
       visible: visible ?? this.visible,
       locked: locked ?? this.locked,
       properties: properties ?? this.properties,
@@ -46,6 +50,7 @@ class UiNode {
         'type': type,
         if (name != null) 'name': name,
         'frame': frame.toJson(),
+        'rotation': rotation,
         'visible': visible,
         'locked': locked,
         'properties': properties,
@@ -57,6 +62,7 @@ class UiNode {
         type: json['type']! as String,
         name: json['name'] as String?,
         frame: UiRect.fromJson(json['frame']! as Map<String, Object?>),
+        rotation: (json['rotation'] as num?)?.toDouble() ?? 0,
         visible: json['visible'] as bool? ?? true,
         locked: json['locked'] as bool? ?? false,
         properties: Map<String, Object?>.from(
