@@ -27,6 +27,8 @@ class _CanvasViewState extends State<CanvasView> {
   final TransformationController _transform = TransformationController();
   final GlobalKey _viewportKey = GlobalKey();
   Offset? _lastMoveScene;
+  Offset? _screenResizeStartScene;
+  Size? _screenResizeStartSize;
 
   double get _scale => _transform.value.getMaxScaleOnAxis();
 
@@ -185,6 +187,39 @@ class _CanvasViewState extends State<CanvasView> {
                               ),
                             ),
                           ),
+                        if (isWindows)
+                          Positioned(
+                            right: 0,
+                            bottom: 0,
+                            width: 36 / _scale,
+                            height: 36 / _scale,
+                            child: MouseRegion(
+                              cursor:
+                                  SystemMouseCursors.resizeUpLeftDownRight,
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onPanStart: (details) =>
+                                    _beginScreenResize(
+                                  details.globalPosition,
+                                ),
+                                onPanUpdate: (details) =>
+                                    _updateScreenResize(
+                                  details.globalPosition,
+                                ),
+                                onPanEnd: (_) => _endScreenResize(),
+                                child: Align(
+                                  alignment: Alignment.bottomRight,
+                                  child: Icon(
+                                    Icons.drag_handle,
+                                    size: 18 / _scale,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -206,6 +241,24 @@ class _CanvasViewState extends State<CanvasView> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    Padding(
+                      padding: const EdgeInsets.only(left: 10, right: 4),
+                      child: Text(
+                        '${screen.width.toInt()} × ${screen.height.toInt()}',
+                        style: Theme.of(context).textTheme.labelMedium,
+                      ),
+                    ),
+                    if (widget.target == DesignerTarget.android)
+                      IconButton(
+                        tooltip: 'Rotate preview',
+                        onPressed: () {
+                          widget.controller.toggleScreenOrientation();
+                          WidgetsBinding.instance.addPostFrameCallback(
+                            (_) => _fitScreen(),
+                          );
+                        },
+                        icon: const Icon(Icons.screen_rotation),
+                      ),
                     IconButton(
                       tooltip: 'Zoom out',
                       onPressed: () => _setZoom(_scale / 1.15),
@@ -293,6 +346,34 @@ class _CanvasViewState extends State<CanvasView> {
 
   void _endMoveGlobal() {
     _lastMoveScene = null;
+    widget.controller.commitLiveEdit();
+  }
+
+  void _beginScreenResize(Offset globalPosition) {
+    final scene = _sceneFromGlobal(globalPosition);
+    if (scene == null) return;
+    _screenResizeStartScene = scene;
+    final screen = widget.controller.activeScreen;
+    _screenResizeStartSize = Size(screen.width, screen.height);
+  }
+
+  void _updateScreenResize(Offset globalPosition) {
+    final scene = _sceneFromGlobal(globalPosition);
+    final startScene = _screenResizeStartScene;
+    final startSize = _screenResizeStartSize;
+    if (scene == null || startScene == null || startSize == null) return;
+
+    final delta = scene - startScene;
+    widget.controller.resizeActiveScreen(
+      startSize.width + delta.dx,
+      startSize.height + delta.dy,
+      commit: false,
+    );
+  }
+
+  void _endScreenResize() {
+    _screenResizeStartScene = null;
+    _screenResizeStartSize = null;
     widget.controller.commitLiveEdit();
   }
 
