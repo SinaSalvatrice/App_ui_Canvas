@@ -1,3 +1,4 @@
+import 'ui_layout_spec.dart';
 import 'ui_rect.dart';
 
 class UiNode {
@@ -9,6 +10,7 @@ class UiNode {
     this.rotation = 0,
     this.visible = true,
     this.locked = false,
+    this.layout = const UiLayoutSpec(),
     this.properties = const {},
     this.children = const [],
   });
@@ -20,6 +22,7 @@ class UiNode {
   final double rotation;
   final bool visible;
   final bool locked;
+  final UiLayoutSpec layout;
   final Map<String, Object?> properties;
   final List<UiNode> children;
 
@@ -29,6 +32,7 @@ class UiNode {
     double? rotation,
     bool? visible,
     bool? locked,
+    UiLayoutSpec? layout,
     Map<String, Object?>? properties,
     List<UiNode>? children,
   }) {
@@ -40,6 +44,7 @@ class UiNode {
       rotation: rotation ?? this.rotation,
       visible: visible ?? this.visible,
       locked: locked ?? this.locked,
+      layout: layout ?? this.layout,
       properties: properties ?? this.properties,
       children: children ?? this.children,
     );
@@ -53,6 +58,7 @@ class UiNode {
         'rotation': rotation,
         'visible': visible,
         'locked': locked,
+        'layout': layout.toJson(),
         'properties': properties,
         'children': children.map((node) => node.toJson()).toList(),
       };
@@ -65,6 +71,9 @@ class UiNode {
         rotation: (json['rotation'] as num?)?.toDouble() ?? 0,
         visible: json['visible'] as bool? ?? true,
         locked: json['locked'] as bool? ?? false,
+        layout: UiLayoutSpec.fromJson(
+          Map<String, Object?>.from((json['layout'] as Map?) ?? const {}),
+        ),
         properties: Map<String, Object?>.from(
           (json['properties'] as Map?) ?? const {},
         ),

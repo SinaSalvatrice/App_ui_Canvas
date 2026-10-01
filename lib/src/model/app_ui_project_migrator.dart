@@ -1,5 +1,5 @@
 class AppUiProjectMigrator {
-  static const currentVersion = 2;
+  static const currentVersion = 3;
 
   static Map<String, Object?> migrate(Map<String, Object?> source) {
     final json = Map<String, Object?>.from(source);
@@ -24,6 +24,10 @@ class AppUiProjectMigrator {
           _migrateV1ToV2(json);
           version = 2;
           break;
+        case 2:
+          _migrateV2ToV3(json);
+          version = 3;
+          break;
         default:
           throw FormatException(
             'No migration path from .appui schema version $version.',
@@ -43,5 +47,69 @@ class AppUiProjectMigrator {
       'versionCode': 1,
     };
     json['schemaVersion'] = 2;
+  }
+
+  static void _migrateV2ToV3(Map<String, Object?> json) {
+    final rawScreens = json['screens'];
+    if (rawScreens is List) {
+      json['screens'] = [
+        for (final rawScreen in rawScreens)
+          if (rawScreen is Map)
+            _screenWithLayout(
+              Map<String, Object?>.from(rawScreen),
+            )
+          else
+            rawScreen,
+      ];
+    }
+    json['schemaVersion'] = 3;
+  }
+
+  static Map<String, Object?> _screenWithLayout(
+    Map<String, Object?> screen,
+  ) {
+    final rawNodes = screen['nodes'];
+    if (rawNodes is List) {
+      screen['nodes'] = [
+        for (final rawNode in rawNodes)
+          if (rawNode is Map)
+            _nodeWithLayout(
+              Map<String, Object?>.from(rawNode),
+            )
+          else
+            rawNode,
+      ];
+    }
+    return screen;
+  }
+
+  static Map<String, Object?> _nodeWithLayout(
+    Map<String, Object?> node,
+  ) {
+    node.putIfAbsent(
+      'layout',
+      () => <String, Object?>{
+        'widthMode': 'fixed',
+        'heightMode': 'fixed',
+        'horizontalAnchor': 'left',
+        'verticalAnchor': 'top',
+        'minWidth': 24,
+        'minHeight': 24,
+      },
+    );
+
+    final rawChildren = node['children'];
+    if (rawChildren is List) {
+      node['children'] = [
+        for (final rawChild in rawChildren)
+          if (rawChild is Map)
+            _nodeWithLayout(
+              Map<String, Object?>.from(rawChild),
+            )
+          else
+            rawChild,
+      ];
+    }
+    return node;
   }
 }
