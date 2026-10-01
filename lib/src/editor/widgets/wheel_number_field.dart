@@ -82,14 +82,17 @@ class _WheelNumberFieldState extends State<WheelNumberField> {
       return;
     }
 
-    final direction = event.scrollDelta.dy < 0 ? 1.0 : -1.0;
-    final current = _parse(_textController.text) ?? widget.value;
-    final next = _clamp(current + widget.step * direction);
-    _textController.text = _format(next);
-    _textController.selection = TextSelection.collapsed(
-      offset: _textController.text.length,
-    );
-    widget.onChanged(next);
+    GestureBinding.instance.pointerSignalResolver.register(event, (resolved) {
+      final scroll = resolved as PointerScrollEvent;
+      final direction = scroll.scrollDelta.dy < 0 ? 1.0 : -1.0;
+      final current = _parse(_textController.text) ?? widget.value;
+      final next = _clamp(current + widget.step * direction);
+      _textController.text = _format(next);
+      _textController.selection = TextSelection.collapsed(
+        offset: _textController.text.length,
+      );
+      widget.onChanged(next);
+    });
   }
 
   void _handleFocusChange() {
