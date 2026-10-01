@@ -32,7 +32,10 @@
 - [x] locked nodes protected from move / resize / delete
 - [x] rotation + 15 degree Shift snapping
 - [ ] group resize
-- [x] keyboard nudging (1 unit, Shift = 10)\n- [x] multi-selection bounding frame\n- [x] align left / center / right / top / middle / bottom\n- [x] Ctrl+A select all
+- [x] keyboard nudging (1 unit, Shift = 10)
+- [x] multi-selection bounding frame
+- [x] align left / center / right / top / middle / bottom
+- [x] Ctrl+A select all
 
 ### Canvas
 - [x] central TransformationController
