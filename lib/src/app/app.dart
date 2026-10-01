@@ -109,6 +109,11 @@ class _AppUiDesignerAppState extends State<AppUiDesignerApp>
     final recovery = await _session.loadRecovery(widget.target);
     if (recovery == null || !mounted) return;
 
+    if (recovery.project.target != widget.target) {
+      await _clearRecovery();
+      return;
+    }
+
     final sourcePath = recovery.sourcePath;
     if (sourcePath != null) {
       final source = File(sourcePath);
@@ -153,11 +158,16 @@ class _AppUiDesignerAppState extends State<AppUiDesignerApp>
       recovery.project,
       markClean: false,
     );
-    setState(() => _projectPath = recovery.sourcePath);
+
+    String? recoveredPath;
     if (recovery.sourcePath case final path?) {
       if (await File(path).exists()) {
+        recoveredPath = path;
         await _rememberRecent(path);
       }
+    }
+    if (mounted) {
+      setState(() => _projectPath = recoveredPath);
     }
   }
 
