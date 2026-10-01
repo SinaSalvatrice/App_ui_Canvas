@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../components/component_definition.dart';
 import '../model/app_ui_project.dart';
 import '../model/ui_node.dart';
+import '../model/ui_rect.dart';
 import '../model/ui_screen.dart';
 
 class EditorController extends ChangeNotifier {
@@ -21,6 +22,14 @@ class EditorController extends ChangeNotifier {
   final Set<String> _selectedNodeIds = <String>{};
   String? _primarySelectedNodeId;
   int _nextNodeNumber = 1;
+
+  Map<String, UiRect>? _moveStartFrames;
+  double _moveDeltaX = 0;
+  double _moveDeltaY = 0;
+  String? _resizeNodeId;
+  UiRect? _resizeStartFrame;
+  double _resizeDeltaX = 0;
+  double _resizeDeltaY = 0;
 
   bool gridEnabled = true;
   bool snapEnabled = false;
@@ -129,16 +138,32 @@ class EditorController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void beginMove() {
+    _moveStartFrames = {
+      for (final node in activeScreen.nodes)
+        if (_selectedNodeIds.contains(node.id)) node.id: node.frame,
+    };
+    _moveDeltaX = 0;
+    _moveDeltaY = 0;
+  }
+
   void moveSelectedBy(double dx, double dy) {
     if (_selectedNodeIds.isEmpty) return;
-    final selected = _selectedNodeIds;
+    _moveStartFrames ??= {
+      for (final node in activeScreen.nodes)
+        if (_selectedNodeIds.contains(node.id)) node.id: node.frame,
+    };
+    _moveDeltaX += dx;
+    _moveDeltaY += dy;
+    final starts = _moveStartFrames!;
 
     final nodes = activeScreen.nodes.map((node) {
-      if (!selected.contains(node.id)) return node;
+      final start = starts[node.id];
+      if (start == null) return node;
       return node.copyWith(
         frame: node.frame.copyWith(
-          x: _snap(node.frame.x + dx),
-          y: _snap(node.frame.y + dy),
+          x: _snap(start.x + _moveDeltaX),
+          y: _snap(start.y + _moveDeltaY),
         ),
       );
     }).toList();
@@ -147,6 +172,15 @@ class EditorController extends ChangeNotifier {
       activeScreen.copyWith(nodes: nodes),
       commit: false,
     );
+  }
+
+  void beginResizeNode(String id) {
+    final source = _nodeById(id);
+    if (source == null) return;
+    _resizeNodeId = id;
+    _resizeStartFrame = source.frame;
+    _resizeDeltaX = 0;
+    _resizeDeltaY = 0;
   }
 
   void resizeNodeBy(
@@ -161,28 +195,43 @@ class EditorController extends ChangeNotifier {
     final source = _nodeById(id);
     if (source == null) return;
 
-    var x = source.frame.x;
-    var y = source.frame.y;
-    var width = source.frame.width;
-    var height = source.frame.height;
+    if (_resizeNodeId != id || _resizeStartFrame == null) {
+      beginResizeNode(id);
+    }
+    final start = _resizeStartFrame!;
+    _resizeDeltaX += dx;
+    _resizeDeltaY += dy;
+
+    var x = start.x;
+    var y = start.y;
+    var width = start.width;
+    var height = start.height;
 
     if (left) {
       final rightEdge = x + width;
-      width = (width - dx).clamp(24.0, activeScreen.width).toDouble();
+      width = (width - _resizeDeltaX)
+          .clamp(24.0, activeScreen.width)
+          .toDouble();
       width = _snapSize(width, min: 24);
       x = rightEdge - width;
     } else if (right) {
-      width = (width + dx).clamp(24.0, activeScreen.width).toDouble();
+      width = (width + _resizeDeltaX)
+          .clamp(24.0, activeScreen.width)
+          .toDouble();
       width = _snapSize(width, min: 24);
     }
 
     if (top) {
       final bottomEdge = y + height;
-      height = (height - dy).clamp(24.0, activeScreen.height).toDouble();
+      height = (height - _resizeDeltaY)
+          .clamp(24.0, activeScreen.height)
+          .toDouble();
       height = _snapSize(height, min: 24);
       y = bottomEdge - height;
     } else if (bottom) {
-      height = (height + dy).clamp(24.0, activeScreen.height).toDouble();
+      height = (height + _resizeDeltaY)
+          .clamp(24.0, activeScreen.height)
+          .toDouble();
       height = _snapSize(height, min: 24);
     }
 
@@ -198,6 +247,13 @@ class EditorController extends ChangeNotifier {
   }
 
   void commitLiveEdit() {
+    _moveStartFrames = null;
+    _moveDeltaX = 0;
+    _moveDeltaY = 0;
+    _resizeNodeId = null;
+    _resizeStartFrame = null;
+    _resizeDeltaX = 0;
+    _resizeDeltaY = 0;
     _pushHistory();
     notifyListeners();
   }
