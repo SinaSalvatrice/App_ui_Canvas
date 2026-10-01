@@ -32,7 +32,7 @@
 - [x] locked nodes protected from move / resize / delete
 - [ ] rotation
 - [ ] group resize
-- [ ] keyboard nudging
+- [x] keyboard nudging (1 unit, Shift = 10)
 
 ### Canvas
 - [x] central TransformationController

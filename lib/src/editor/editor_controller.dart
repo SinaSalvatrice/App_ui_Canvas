@@ -137,6 +137,23 @@ class EditorController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void nudgeSelected(double dx, double dy) {
+    if (_selectedNodeIds.isEmpty) return;
+    final nodes = activeScreen.nodes.map((node) {
+      if (!_selectedNodeIds.contains(node.id) || node.locked) return node;
+      return node.copyWith(
+        frame: node.frame.copyWith(
+          x: node.frame.x + dx,
+          y: node.frame.y + dy,
+        ),
+      );
+    }).toList();
+    _replaceActiveScreen(
+      activeScreen.copyWith(nodes: nodes),
+      commit: true,
+    );
+  }
+
   void beginMove() {
     _moveStartFrames = {
       for (final node in activeScreen.nodes)
