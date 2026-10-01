@@ -284,10 +284,7 @@ class _AppUiDesignerAppState extends State<AppUiDesignerApp>
 
     final choice = await _askUnsavedChanges();
     if (choice == _UnsavedChoice.cancel) return false;
-    if (choice == _UnsavedChoice.discard) {
-      await _clearRecovery();
-      return true;
-    }
+    if (choice == _UnsavedChoice.discard) return true;
     return _saveProject();
   }
 
