@@ -56,8 +56,22 @@ echo Ausgabe:
 echo %CD%\build\windows\x64\runner\Release
 echo.
 
-if exist "build\windows\x64\runner\Release" (
-  explorer "build\windows\x64\runner\Release"
+set "RELEASE_DIR=build\windows\x64\runner\Release"
+set "APP_STARTED="
+
+if exist "%RELEASE_DIR%" (
+  for %%F in ("%RELEASE_DIR%\*.exe") do (
+    if not defined APP_STARTED (
+      echo Starte %%~nxF ...
+      start "" "%%~fF"
+      set "APP_STARTED=1"
+    )
+  )
+)
+
+if not defined APP_STARTED (
+  echo Keine EXE gefunden - oeffne stattdessen den Release-Ordner.
+  if exist "%RELEASE_DIR%" explorer "%RELEASE_DIR%"
 )
 
 pause
