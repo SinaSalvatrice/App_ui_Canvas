@@ -276,7 +276,7 @@ class EditorController extends ChangeNotifier {
 
   double _snapSize(double value, {required double min}) {
     if (!snapEnabled) return value;
-    return ((value / gridStep).round() * gridStep).clamp(min, double.infinity);
+    return ((value / gridStep).round() * gridStep)\n        .clamp(min, double.infinity)\n        .toDouble();
   }
 
   UiNode? _nodeById(String id) {
