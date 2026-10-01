@@ -87,14 +87,18 @@ class EditorController extends ChangeNotifier {
 
   bool isSelected(String id) => _selectedNodeIds.contains(id);
 
-  void replaceProject(AppUiProject project) {
+  void replaceProject(
+    AppUiProject project, {
+    bool markClean = true,
+  }) {
     _project = project;
     _activeScreenId = project.initialScreenId;
     _history
       ..clear()
       ..add(project);
     _historyIndex = 0;
-    _cleanProjectJson = jsonEncode(project.toJson());
+    _cleanProjectJson =
+        markClean ? jsonEncode(project.toJson()) : '__recovered_project__';
     _selectedNodeIds.clear();
     _primarySelectedNodeId = null;
     _clipboard = const [];
