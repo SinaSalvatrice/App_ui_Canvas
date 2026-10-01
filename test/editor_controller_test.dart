@@ -342,4 +342,27 @@ void main() {
     expect(controller.activeScreen.width, 1280);
     expect(controller.activeScreen.height, 720);
   });
+  test('non-geometry edits preserve fill insets', () {
+    final controller = EditorController(
+      AppUiProject.empty(DesignerTarget.windows),
+    );
+    final component = ComponentRegistry.forTarget(DesignerTarget.windows).first;
+    controller.addComponent(component);
+
+    controller.updatePrimaryLayout(
+      controller.selectedNode!.layout.copyWith(
+        widthMode: UiSizeMode.fill,
+        maxWidth: 300,
+      ),
+    );
+    final originalRightInset = controller.selectedNode!.layout.rightInset;
+
+    controller.applyScreenPreset(ScreenPreset.windowsFullHd);
+    controller.setNodeLocked(controller.selectedNodeId!, true);
+
+    expect(controller.selectedNode!.layout.rightInset, originalRightInset);
+
+    controller.applyScreenPreset(ScreenPreset.windowsStandard);
+    expect(controller.selectedNode!.frame.width, component.defaultFrame.width);
+  });
 }

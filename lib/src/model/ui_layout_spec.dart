@@ -80,14 +80,14 @@ class UiLayoutSpec {
   double constrainWidth(double value) {
     var result = value < minWidth ? minWidth : value;
     final max = maxWidth;
-    if (max != null && result > max) result = max;
+    if (max != null && max >= minWidth && result > max) result = max;
     return result;
   }
 
   double constrainHeight(double value) {
     var result = value < minHeight ? minHeight : value;
     final max = maxHeight;
-    if (max != null && result > max) result = max;
+    if (max != null && max >= minHeight && result > max) result = max;
     return result;
   }
 
