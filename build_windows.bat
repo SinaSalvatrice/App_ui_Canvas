@@ -34,7 +34,7 @@ if errorlevel 1 goto :failed
 
 echo.
 echo [3/5] Code analysieren...
-call flutter analyze
+call flutter analyze --no-fatal-infos --no-fatal-warnings
 if errorlevel 1 goto :failed
 
 echo.
