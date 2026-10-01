@@ -7,6 +7,7 @@ import '../model/app_ui_project.dart';
 import '../model/ui_node.dart';
 import '../model/ui_rect.dart';
 import '../model/ui_screen.dart';
+import '../model/screen_preset.dart';
 
 enum EditorAlignment {
   left,
@@ -113,12 +114,14 @@ class EditorController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void addScreen() {
+  void addScreen([ScreenPreset? preset]) {
+    final selectedPreset = preset ?? ScreenPreset.defaultFor(_project.target);
     final id = _newScreenId();
-    final screen = UiScreen.empty(
+    final screen = UiScreen(
       id: id,
       name: 'Screen ' + (_project.screens.length + 1).toString(),
-      target: _project.target,
+      width: selectedPreset.width,
+      height: selectedPreset.height,
     );
     _project = _project.copyWith(screens: [..._project.screens, screen]);
     _activeScreenId = id;
@@ -126,6 +129,17 @@ class EditorController extends ChangeNotifier {
     _primarySelectedNodeId = null;
     _pushHistory();
     notifyListeners();
+  }
+
+  void applyScreenPreset(ScreenPreset preset) {
+    final screen = activeScreen;
+    _replaceActiveScreen(
+      screen.copyWith(
+        width: preset.width,
+        height: preset.height,
+      ),
+      commit: true,
+    );
   }
 
   void duplicateActiveScreen() {
