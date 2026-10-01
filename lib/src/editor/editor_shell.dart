@@ -6,6 +6,8 @@ import '../components/component_registry.dart';
 import '../platform/designer_target.dart';
 import 'canvas_view.dart';
 import 'editor_controller.dart';
+import 'widgets/inspector_panel.dart';
+import 'widgets/layers_panel.dart';
 
 class EditorShell extends StatelessWidget {
   const EditorShell({
@@ -61,6 +63,12 @@ class _WindowsDesigner extends StatelessWidget {
           control: true,
           shift: true,
         ): controller.redo,
+        const SingleActivator(LogicalKeyboardKey.keyC, control: true):
+            controller.copySelected,
+        const SingleActivator(LogicalKeyboardKey.keyX, control: true):
+            controller.cutSelected,
+        const SingleActivator(LogicalKeyboardKey.keyV, control: true):
+            controller.pasteClipboard,
         const SingleActivator(LogicalKeyboardKey.delete):
             controller.deleteSelected,
         const SingleActivator(LogicalKeyboardKey.keyD, control: true):
@@ -93,7 +101,7 @@ class _WindowsDesigner extends StatelessWidget {
                       ),
                       const VerticalDivider(width: 1),
                       SizedBox(
-                        width: 280,
+                        width: 300,
                         child: _RightPanel(controller: controller),
                       ),
                     ],
@@ -123,7 +131,7 @@ class _AndroidDesigner extends StatelessWidget {
       appBar: AppBar(
         title: Row(
           children: [
-            const Text('App UI Designer'),
+            const Text('App UI Canvas'),
             if (controller.isDirty) ...[
               const SizedBox(width: 8),
               const Text('•', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -142,9 +150,9 @@ class _AndroidDesigner extends StatelessWidget {
             icon: const Icon(Icons.redo),
           ),
           IconButton(
-            tooltip: 'Preview',
-            onPressed: null,
-            icon: const Icon(Icons.play_arrow),
+            tooltip: 'Paste',
+            onPressed: controller.canPaste ? controller.pasteClipboard : null,
+            icon: const Icon(Icons.paste),
           ),
         ],
       ),
@@ -179,7 +187,7 @@ class _AndroidDesigner extends StatelessWidget {
                 onTap: () => _showSheet(
                   context,
                   title: 'Layers',
-                  child: _Layers(controller: controller),
+                  child: LayersPanel(controller: controller),
                 ),
               ),
               _BottomTool(
@@ -188,7 +196,7 @@ class _AndroidDesigner extends StatelessWidget {
                 onTap: () => _showSheet(
                   context,
                   title: 'Inspector',
-                  child: _Inspector(controller: controller),
+                  child: InspectorPanel(controller: controller),
                 ),
               ),
             ],
@@ -208,25 +216,23 @@ class _AndroidDesigner extends StatelessWidget {
       useSafeArea: true,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (context) {
-        return FractionallySizedBox(
-          heightFactor: 0.72,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                child: Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
+      builder: (context) => FractionallySizedBox(
+        heightFactor: 0.72,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Text(
+                title,
+                style: Theme.of(context).textTheme.titleLarge,
               ),
-              const Divider(height: 1),
-              Expanded(child: child),
-            ],
-          ),
-        );
-      },
+            ),
+            const Divider(height: 1),
+            Expanded(child: child),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -262,15 +268,28 @@ class _DesktopTopBar extends StatelessWidget {
               icon: const Icon(Icons.redo),
             ),
             IconButton(
-              tooltip: 'Duplicate',
+              tooltip: 'Copy',
               onPressed:
-                  controller.selectedCount == 0 ? null : controller.duplicateSelected,
-              icon: const Icon(Icons.copy_outlined),
+                  controller.selectedCount == 0 ? null : controller.copySelected,
+              icon: const Icon(Icons.copy),
+            ),
+            IconButton(
+              tooltip: 'Paste',
+              onPressed: controller.canPaste ? controller.pasteClipboard : null,
+              icon: const Icon(Icons.paste),
+            ),
+            IconButton(
+              tooltip: 'Duplicate',
+              onPressed: controller.selectedCount == 0
+                  ? null
+                  : controller.duplicateSelected,
+              icon: const Icon(Icons.copy_all),
             ),
             IconButton(
               tooltip: 'Delete',
-              onPressed:
-                  controller.selectedCount == 0 ? null : controller.deleteSelected,
+              onPressed: controller.selectedCount == 0
+                  ? null
+                  : controller.deleteSelected,
               icon: const Icon(Icons.delete_outline),
             ),
             const Spacer(),
@@ -406,96 +425,8 @@ class _RightPanelState extends State<_RightPanel> {
         const Divider(height: 1),
         Expanded(
           child: _tab == 0
-              ? _Inspector(controller: widget.controller)
-              : _Layers(controller: widget.controller),
-        ),
-      ],
-    );
-  }
-}
-
-class _Layers extends StatelessWidget {
-  const _Layers({required this.controller});
-
-  final EditorController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final nodes = controller.activeScreen.nodes;
-    if (nodes.isEmpty) {
-      return const Center(child: Text('No elements yet.'));
-    }
-
-    return ListView(
-      children: [
-        for (final node in nodes.reversed)
-          ListTile(
-            leading: Icon(
-              controller.isSelected(node.id)
-                  ? Icons.check_box
-                  : Icons.check_box_outline_blank,
-              size: 19,
-            ),
-            title: Text(node.name ?? node.type),
-            subtitle: Text(node.id),
-            selected: controller.isSelected(node.id),
-            onTap: () {
-              final keyboard = HardwareKeyboard.instance;
-              final additive =
-                  keyboard.isControlPressed || keyboard.isMetaPressed;
-              controller.selectNode(
-                node.id,
-                additive: additive,
-                toggle: additive,
-              );
-            },
-          ),
-      ],
-    );
-  }
-}
-
-class _Inspector extends StatelessWidget {
-  const _Inspector({required this.controller});
-
-  final EditorController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final node = controller.selectedNode;
-
-    if (node == null) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
-        child: Text('Select an element to edit its properties.'),
-      );
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        if (controller.selectedCount > 1)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Chip(
-              label: Text('${controller.selectedCount} selected'),
-            ),
-          ),
-        Text(
-          node.name ?? node.type,
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: 12),
-        Text('ID: ${node.id}'),
-        Text('Type: ${node.type}'),
-        const Divider(),
-        Text('X: ${node.frame.x.toStringAsFixed(0)}'),
-        Text('Y: ${node.frame.y.toStringAsFixed(0)}'),
-        Text('W: ${node.frame.width.toStringAsFixed(0)}'),
-        Text('H: ${node.frame.height.toStringAsFixed(0)}'),
-        const SizedBox(height: 16),
-        const Text(
-          'Editable numeric controls are the next inspector step.',
+              ? InspectorPanel(controller: widget.controller)
+              : LayersPanel(controller: widget.controller),
         ),
       ],
     );

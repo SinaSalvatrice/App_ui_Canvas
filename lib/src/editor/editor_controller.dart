@@ -22,6 +22,7 @@ class EditorController extends ChangeNotifier {
   final Set<String> _selectedNodeIds = <String>{};
   String? _primarySelectedNodeId;
   int _nextNodeNumber = 1;
+  List<UiNode> _clipboard = const [];
 
   Map<String, UiRect>? _moveStartFrames;
   double _moveDeltaX = 0;
@@ -42,6 +43,7 @@ class EditorController extends ChangeNotifier {
   int get selectedCount => _selectedNodeIds.length;
   bool get canUndo => _historyIndex > 0;
   bool get canRedo => _historyIndex < _history.length - 1;
+  bool get canPaste => _clipboard.isNotEmpty;
   bool get isDirty => jsonEncode(_project.toJson()) != _cleanProjectJson;
 
   UiScreen get activeScreen => _project.screens.firstWhere(
@@ -117,7 +119,7 @@ class EditorController extends ChangeNotifier {
   void addComponent(ComponentDefinition definition) {
     final offset = (activeScreen.nodes.length % 8) * 12.0;
     final node = UiNode(
-      id: 'node_${_nextNodeNumber++}',
+      id: _newNodeId(),
       type: definition.type,
       name: definition.label,
       frame: definition.defaultFrame.copyWith(
@@ -131,17 +133,15 @@ class EditorController extends ChangeNotifier {
       activeScreen.copyWith(nodes: [...activeScreen.nodes, node]),
       commit: true,
     );
-    _selectedNodeIds
-      ..clear()
-      ..add(node.id);
-    _primarySelectedNodeId = node.id;
+    _selectOnly(node.id);
     notifyListeners();
   }
 
   void beginMove() {
     _moveStartFrames = {
       for (final node in activeScreen.nodes)
-        if (_selectedNodeIds.contains(node.id)) node.id: node.frame,
+        if (_selectedNodeIds.contains(node.id) && !node.locked)
+          node.id: node.frame,
     };
     _moveDeltaX = 0;
     _moveDeltaY = 0;
@@ -151,8 +151,11 @@ class EditorController extends ChangeNotifier {
     if (_selectedNodeIds.isEmpty) return;
     _moveStartFrames ??= {
       for (final node in activeScreen.nodes)
-        if (_selectedNodeIds.contains(node.id)) node.id: node.frame,
+        if (_selectedNodeIds.contains(node.id) && !node.locked)
+          node.id: node.frame,
     };
+    if (_moveStartFrames!.isEmpty) return;
+
     _moveDeltaX += dx;
     _moveDeltaY += dy;
     final starts = _moveStartFrames!;
@@ -176,7 +179,7 @@ class EditorController extends ChangeNotifier {
 
   void beginResizeNode(String id) {
     final source = _nodeById(id);
-    if (source == null) return;
+    if (source == null || source.locked) return;
     _resizeNodeId = id;
     _resizeStartFrame = source.frame;
     _resizeDeltaX = 0;
@@ -193,12 +196,14 @@ class EditorController extends ChangeNotifier {
     required bool bottom,
   }) {
     final source = _nodeById(id);
-    if (source == null) return;
+    if (source == null || source.locked) return;
 
     if (_resizeNodeId != id || _resizeStartFrame == null) {
       beginResizeNode(id);
     }
-    final start = _resizeStartFrame!;
+    final start = _resizeStartFrame;
+    if (start == null) return;
+
     _resizeDeltaX += dx;
     _resizeDeltaY += dy;
 
@@ -235,42 +240,122 @@ class EditorController extends ChangeNotifier {
       height = _snapSize(height, min: 24);
     }
 
-    final next = source.copyWith(
-      frame: source.frame.copyWith(
-        x: snapEnabled ? _snap(x) : x,
-        y: snapEnabled ? _snap(y) : y,
-        width: width,
-        height: height,
+    _replaceNode(
+      source.copyWith(
+        frame: source.frame.copyWith(
+          x: snapEnabled ? _snap(x) : x,
+          y: snapEnabled ? _snap(y) : y,
+          width: width,
+          height: height,
+        ),
       ),
+      commit: false,
     );
-    _replaceNode(next, commit: false);
   }
 
   void commitLiveEdit() {
-    _moveStartFrames = null;
-    _moveDeltaX = 0;
-    _moveDeltaY = 0;
-    _resizeNodeId = null;
-    _resizeStartFrame = null;
-    _resizeDeltaX = 0;
-    _resizeDeltaY = 0;
+    _resetLiveTransform();
     _pushHistory();
     notifyListeners();
+  }
+
+  void updatePrimaryFrame({
+    double? x,
+    double? y,
+    double? width,
+    double? height,
+  }) {
+    final node = selectedNode;
+    if (node == null || node.locked) return;
+
+    _replaceNode(
+      node.copyWith(
+        frame: node.frame.copyWith(
+          x: x,
+          y: y,
+          width: width == null ? null : width.clamp(24.0, 10000.0).toDouble(),
+          height:
+              height == null ? null : height.clamp(24.0, 10000.0).toDouble(),
+        ),
+      ),
+      commit: true,
+    );
+  }
+
+  void updatePrimaryProperty(String key, Object? value) {
+    final node = selectedNode;
+    if (node == null || node.locked) return;
+    final properties = Map<String, Object?>.from(node.properties);
+    properties[key] = value;
+    _replaceNode(
+      node.copyWith(properties: properties),
+      commit: true,
+    );
+  }
+
+  void setNodeVisible(String id, bool visible) {
+    final node = _nodeById(id);
+    if (node == null || node.visible == visible) return;
+    _replaceNode(node.copyWith(visible: visible), commit: true);
+  }
+
+  void setNodeLocked(String id, bool locked) {
+    final node = _nodeById(id);
+    if (node == null || node.locked == locked) return;
+    _replaceNode(node.copyWith(locked: locked), commit: true);
   }
 
   void deleteSelected() {
     if (_selectedNodeIds.isEmpty) return;
     final selected = Set<String>.from(_selectedNodeIds);
+    final deletable = activeScreen.nodes
+        .where((node) => selected.contains(node.id) && !node.locked)
+        .map((node) => node.id)
+        .toSet();
+    if (deletable.isEmpty) return;
+
     _replaceActiveScreen(
       activeScreen.copyWith(
         nodes: activeScreen.nodes
-            .where((node) => !selected.contains(node.id))
+            .where((node) => !deletable.contains(node.id))
             .toList(),
       ),
       commit: true,
     );
-    _selectedNodeIds.clear();
-    _primarySelectedNodeId = null;
+    _selectedNodeIds.removeAll(deletable);
+    _primarySelectedNodeId =
+        _selectedNodeIds.isEmpty ? null : _selectedNodeIds.last;
+    notifyListeners();
+  }
+
+  void copySelected() {
+    if (_selectedNodeIds.isEmpty) return;
+    _clipboard = activeScreen.nodes
+        .where((node) => _selectedNodeIds.contains(node.id))
+        .map(_deepCopyNode)
+        .toList();
+    notifyListeners();
+  }
+
+  void cutSelected() {
+    copySelected();
+    deleteSelected();
+  }
+
+  void pasteClipboard() {
+    if (_clipboard.isEmpty) return;
+    final pasted = _clipboard
+        .map((node) => _cloneWithNewIds(node, offset: 16))
+        .toList();
+
+    _replaceActiveScreen(
+      activeScreen.copyWith(nodes: [...activeScreen.nodes, ...pasted]),
+      commit: true,
+    );
+    _selectedNodeIds
+      ..clear()
+      ..addAll(pasted.map((node) => node.id));
+    _primarySelectedNodeId = pasted.last.id;
     notifyListeners();
   }
 
@@ -281,22 +366,9 @@ class EditorController extends ChangeNotifier {
         .toList();
     if (selected.isEmpty) return;
 
-    final duplicates = <UiNode>[];
-    for (final source in selected) {
-      duplicates.add(
-        UiNode(
-          id: 'node_${_nextNodeNumber++}',
-          type: source.type,
-          name: source.name,
-          frame: source.frame.copyWith(
-            x: source.frame.x + 16,
-            y: source.frame.y + 16,
-          ),
-          properties: Map<String, Object?>.from(source.properties),
-          children: source.children,
-        ),
-      );
-    }
+    final duplicates = selected
+        .map((node) => _cloneWithNewIds(node, offset: 16))
+        .toList();
 
     _replaceActiveScreen(
       activeScreen.copyWith(nodes: [...activeScreen.nodes, ...duplicates]),
@@ -309,10 +381,66 @@ class EditorController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void moveSelectedLayer(int delta) {
+    if (_selectedNodeIds.isEmpty || delta == 0) return;
+    final nodes = [...activeScreen.nodes];
+
+    if (delta > 0) {
+      for (var i = nodes.length - 2; i >= 0; i--) {
+        if (_selectedNodeIds.contains(nodes[i].id) &&
+            !_selectedNodeIds.contains(nodes[i + 1].id)) {
+          final item = nodes[i];
+          nodes[i] = nodes[i + 1];
+          nodes[i + 1] = item;
+        }
+      }
+    } else {
+      for (var i = 1; i < nodes.length; i++) {
+        if (_selectedNodeIds.contains(nodes[i].id) &&
+            !_selectedNodeIds.contains(nodes[i - 1].id)) {
+          final item = nodes[i];
+          nodes[i] = nodes[i - 1];
+          nodes[i - 1] = item;
+        }
+      }
+    }
+
+    _replaceActiveScreen(activeScreen.copyWith(nodes: nodes), commit: true);
+  }
+
+  void bringSelectedToFront() {
+    if (_selectedNodeIds.isEmpty) return;
+    final back = activeScreen.nodes
+        .where((node) => !_selectedNodeIds.contains(node.id))
+        .toList();
+    final front = activeScreen.nodes
+        .where((node) => _selectedNodeIds.contains(node.id))
+        .toList();
+    _replaceActiveScreen(
+      activeScreen.copyWith(nodes: [...back, ...front]),
+      commit: true,
+    );
+  }
+
+  void sendSelectedToBack() {
+    if (_selectedNodeIds.isEmpty) return;
+    final back = activeScreen.nodes
+        .where((node) => _selectedNodeIds.contains(node.id))
+        .toList();
+    final front = activeScreen.nodes
+        .where((node) => !_selectedNodeIds.contains(node.id))
+        .toList();
+    _replaceActiveScreen(
+      activeScreen.copyWith(nodes: [...back, ...front]),
+      commit: true,
+    );
+  }
+
   void undo() {
     if (!canUndo) return;
     _historyIndex -= 1;
     _project = _history[_historyIndex];
+    _resetLiveTransform();
     _ensureSelectionExists();
     notifyListeners();
   }
@@ -321,9 +449,12 @@ class EditorController extends ChangeNotifier {
     if (!canRedo) return;
     _historyIndex += 1;
     _project = _history[_historyIndex];
+    _resetLiveTransform();
     _ensureSelectionExists();
     notifyListeners();
   }
+
+  String _newNodeId() => 'node_${_nextNodeNumber++}';
 
   double _snap(double value) {
     if (!snapEnabled) return value;
@@ -332,7 +463,9 @@ class EditorController extends ChangeNotifier {
 
   double _snapSize(double value, {required double min}) {
     if (!snapEnabled) return value;
-    return ((value / gridStep).round() * gridStep)\n        .clamp(min, double.infinity)\n        .toDouble();
+    return ((value / gridStep).round() * gridStep)
+        .clamp(min, double.infinity)
+        .toDouble();
   }
 
   UiNode? _nodeById(String id) {
@@ -340,6 +473,34 @@ class EditorController extends ChangeNotifier {
       if (node.id == id) return node;
     }
     return null;
+  }
+
+  UiNode _deepCopyNode(UiNode node) =>
+      UiNode.fromJson(Map<String, Object?>.from(node.toJson()));
+
+  UiNode _cloneWithNewIds(UiNode source, {required double offset}) {
+    return UiNode(
+      id: _newNodeId(),
+      type: source.type,
+      name: source.name,
+      frame: source.frame.copyWith(
+        x: source.frame.x + offset,
+        y: source.frame.y + offset,
+      ),
+      visible: source.visible,
+      locked: source.locked,
+      properties: Map<String, Object?>.from(source.properties),
+      children: source.children
+          .map((child) => _cloneWithNewIds(child, offset: 0))
+          .toList(),
+    );
+  }
+
+  void _selectOnly(String id) {
+    _selectedNodeIds
+      ..clear()
+      ..add(id);
+    _primarySelectedNodeId = id;
   }
 
   void _replaceNode(UiNode replacement, {required bool commit}) {
@@ -379,6 +540,16 @@ class EditorController extends ChangeNotifier {
       _history.removeAt(0);
     }
     _historyIndex = _history.length - 1;
+  }
+
+  void _resetLiveTransform() {
+    _moveStartFrames = null;
+    _moveDeltaX = 0;
+    _moveDeltaY = 0;
+    _resizeNodeId = null;
+    _resizeStartFrame = null;
+    _resizeDeltaX = 0;
+    _resizeDeltaY = 0;
   }
 
   void _ensureSelectionExists() {

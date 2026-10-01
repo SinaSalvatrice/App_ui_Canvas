@@ -49,7 +49,7 @@ class _CanvasViewState extends State<CanvasView> {
               maxScale: 4,
               boundaryMargin: const EdgeInsets.all(1000),
               constrained: false,
-              panEnabled: true,
+              panEnabled: !isWindows,
               scaleEnabled: !isWindows,
               child: SizedBox(
                 width: screen.width,
@@ -90,42 +90,46 @@ class _CanvasViewState extends State<CanvasView> {
                             ),
                           ),
                         for (final node in screen.nodes)
-                          _NodeView(
-                            node: node,
-                            selected: widget.controller.isSelected(node.id),
-                            primary:
-                                widget.controller.selectedNodeId == node.id,
-                            scale: _scale,
-                            onSelect: (additive) => widget.controller.selectNode(
-                              node.id,
-                              additive: additive,
-                              toggle: additive,
+                          if (node.visible)
+                            _NodeView(
+                              node: node,
+                              selected: widget.controller.isSelected(node.id),
+                              primary:
+                                  widget.controller.selectedNodeId == node.id,
+                              scale: _scale,
+                              onSelect: (additive) =>
+                                  widget.controller.selectNode(
+                                node.id,
+                                additive: additive,
+                                toggle: additive,
+                              ),
+                              onMoveStart: widget.controller.beginMove,
+                              onMove: (dx, dy) =>
+                                  widget.controller.moveSelectedBy(dx, dy),
+                              onMoveEnd: widget.controller.commitLiveEdit,
+                              onResizeStart: () =>
+                                  widget.controller.beginResizeNode(node.id),
+                              onResize: ({
+                                required dx,
+                                required dy,
+                                required left,
+                                required right,
+                                required top,
+                                required bottom,
+                              }) =>
+                                  widget.controller.resizeNodeBy(
+                                node.id,
+                                dx: dx,
+                                dy: dy,
+                                left: left,
+                                right: right,
+                                top: top,
+                                bottom: bottom,
+                              ),
+                              onResizeEnd: widget.controller.commitLiveEdit,
+                              onContextMenu: (position) =>
+                                  _showNodeMenu(context, position, node),
                             ),
-                            onMoveStart: widget.controller.beginMove,
-                            onMove: (dx, dy) =>
-                                widget.controller.moveSelectedBy(dx, dy),
-                            onMoveEnd: widget.controller.commitLiveEdit,
-                            onResizeStart: () =>
-                                widget.controller.beginResizeNode(node.id),
-                            onResize: ({
-                              required dx,
-                              required dy,
-                              required left,
-                              required right,
-                              required top,
-                              required bottom,
-                            }) =>
-                                widget.controller.resizeNodeBy(
-                              node.id,
-                              dx: dx,
-                              dy: dy,
-                              left: left,
-                              right: right,
-                              top: top,
-                              bottom: bottom,
-                            ),
-                            onResizeEnd: widget.controller.commitLiveEdit,
-                          ),
                       ],
                     ),
                   ),
@@ -212,6 +216,138 @@ class _CanvasViewState extends State<CanvasView> {
     );
   }
 
+  Future<void> _showNodeMenu(
+    BuildContext context,
+    Offset globalPosition,
+    UiNode node,
+  ) async {
+    if (!widget.controller.isSelected(node.id)) {
+      widget.controller.selectNode(node.id);
+    }
+
+    if (widget.target == DesignerTarget.android) {
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (context) => SafeArea(
+          child: Wrap(
+            children: _androidMenuItems(context, node),
+          ),
+        ),
+      );
+      return;
+    }
+
+    final overlay = Overlay.of(context).context.findRenderObject();
+    if (overlay is! RenderBox) return;
+    final local = overlay.globalToLocal(globalPosition);
+
+    final action = await showMenu<_NodeMenuAction>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        local.dx,
+        local.dy,
+        overlay.size.width - local.dx,
+        overlay.size.height - local.dy,
+      ),
+      items: _windowsMenuItems(node),
+    );
+    if (action != null) _runNodeAction(action, node);
+  }
+
+  List<Widget> _androidMenuItems(BuildContext context, UiNode node) {
+    return _NodeMenuAction.values.map((action) {
+      final enabled = _actionEnabled(action, node);
+      return ListTile(
+        enabled: enabled,
+        leading: Icon(_actionIcon(action)),
+        title: Text(_actionLabel(action, node)),
+        onTap: !enabled
+            ? null
+            : () {
+                Navigator.of(context).pop();
+                _runNodeAction(action, node);
+              },
+      );
+    }).toList();
+  }
+
+  List<PopupMenuEntry<_NodeMenuAction>> _windowsMenuItems(UiNode node) {
+    return [
+      for (final action in _NodeMenuAction.values)
+        PopupMenuItem<_NodeMenuAction>(
+          value: action,
+          enabled: _actionEnabled(action, node),
+          child: Row(
+            children: [
+              Icon(_actionIcon(action), size: 18),
+              const SizedBox(width: 10),
+              Text(_actionLabel(action, node)),
+            ],
+          ),
+        ),
+    ];
+  }
+
+  bool _actionEnabled(_NodeMenuAction action, UiNode node) {
+    return switch (action) {
+      _NodeMenuAction.paste => widget.controller.canPaste,
+      _NodeMenuAction.delete => !node.locked,
+      _ => true,
+    };
+  }
+
+  String _actionLabel(_NodeMenuAction action, UiNode node) => switch (action) {
+        _NodeMenuAction.copy => 'Copy',
+        _NodeMenuAction.paste => 'Paste',
+        _NodeMenuAction.duplicate => 'Duplicate',
+        _NodeMenuAction.front => 'Bring to front',
+        _NodeMenuAction.forward => 'Bring forward',
+        _NodeMenuAction.backward => 'Send backward',
+        _NodeMenuAction.back => 'Send to back',
+        _NodeMenuAction.lock => node.locked ? 'Unlock' : 'Lock',
+        _NodeMenuAction.visibility => node.visible ? 'Hide' : 'Show',
+        _NodeMenuAction.delete => 'Delete',
+      };
+
+  IconData _actionIcon(_NodeMenuAction action) => switch (action) {
+        _NodeMenuAction.copy => Icons.copy,
+        _NodeMenuAction.paste => Icons.paste,
+        _NodeMenuAction.duplicate => Icons.copy_all,
+        _NodeMenuAction.front => Icons.vertical_align_top,
+        _NodeMenuAction.forward => Icons.arrow_upward,
+        _NodeMenuAction.backward => Icons.arrow_downward,
+        _NodeMenuAction.back => Icons.vertical_align_bottom,
+        _NodeMenuAction.lock => Icons.lock_outline,
+        _NodeMenuAction.visibility => Icons.visibility_outlined,
+        _NodeMenuAction.delete => Icons.delete_outline,
+      };
+
+  void _runNodeAction(_NodeMenuAction action, UiNode node) {
+    switch (action) {
+      case _NodeMenuAction.copy:
+        widget.controller.copySelected();
+      case _NodeMenuAction.paste:
+        widget.controller.pasteClipboard();
+      case _NodeMenuAction.duplicate:
+        widget.controller.duplicateSelected();
+      case _NodeMenuAction.front:
+        widget.controller.bringSelectedToFront();
+      case _NodeMenuAction.forward:
+        widget.controller.moveSelectedLayer(1);
+      case _NodeMenuAction.backward:
+        widget.controller.moveSelectedLayer(-1);
+      case _NodeMenuAction.back:
+        widget.controller.sendSelectedToBack();
+      case _NodeMenuAction.lock:
+        widget.controller.setNodeLocked(node.id, !node.locked);
+      case _NodeMenuAction.visibility:
+        widget.controller.setNodeVisible(node.id, !node.visible);
+      case _NodeMenuAction.delete:
+        widget.controller.deleteSelected();
+    }
+  }
+
   void _handlePointerSignal(PointerSignalEvent signal) {
     if (signal is! PointerScrollEvent) return;
 
@@ -288,6 +424,7 @@ class _NodeView extends StatelessWidget {
     required this.onResizeStart,
     required this.onResize,
     required this.onResizeEnd,
+    required this.onContextMenu,
   });
 
   final UiNode node;
@@ -308,6 +445,7 @@ class _NodeView extends StatelessWidget {
     required bool bottom,
   }) onResize;
   final VoidCallback onResizeEnd;
+  final ValueChanged<Offset> onContextMenu;
 
   bool get _additiveSelection {
     final keyboard = HardwareKeyboard.instance;
@@ -324,22 +462,32 @@ class _NodeView extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => onSelect(_additiveSelection),
-        onPanStart: (_) {
-          if (!selected) onSelect(_additiveSelection);
-          onMoveStart();
-        },
-        onPanUpdate: (details) => onMove(
-          details.delta.dx / scale,
-          details.delta.dy / scale,
-        ),
-        onPanEnd: (_) => onMoveEnd(),
+        onSecondaryTapDown: (details) =>
+            onContextMenu(details.globalPosition),
+        onLongPressStart: (details) =>
+            onContextMenu(details.globalPosition),
+        onPanStart: node.locked
+            ? null
+            : (_) {
+                if (!selected) onSelect(_additiveSelection);
+                onMoveStart();
+              },
+        onPanUpdate: node.locked
+            ? null
+            : (details) => onMove(
+                  details.delta.dx / scale,
+                  details.delta.dy / scale,
+                ),
+        onPanEnd: node.locked ? null : (_) => onMoveEnd(),
         child: Stack(
           clipBehavior: Clip.none,
           children: [
             Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF5F5F5),
+                  color: node.locked
+                      ? const Color(0xFFEDEDED)
+                      : const Color(0xFFF5F5F5),
                   border: Border.all(
                     color: selected
                         ? Theme.of(context).colorScheme.primary
@@ -347,16 +495,26 @@ class _NodeView extends StatelessWidget {
                     width: selected ? 2 / scale : 1 / scale,
                   ),
                 ),
-                child: Center(
-                  child: Text(
-                    (node.properties['text'] ?? node.name ?? node.type)
-                        .toString(),
-                    textAlign: TextAlign.center,
-                  ),
+                child: Stack(
+                  children: [
+                    Center(
+                      child: Text(
+                        (node.properties['text'] ?? node.name ?? node.type)
+                            .toString(),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    if (node.locked)
+                      const Positioned(
+                        top: 4,
+                        right: 4,
+                        child: Icon(Icons.lock, size: 14),
+                      ),
+                  ],
                 ),
               ),
             ),
-            if (primary)
+            if (primary && !node.locked)
               for (final handle in _ResizeHandle.values)
                 _ResizeGrip(
                   handle: handle,
@@ -453,6 +611,19 @@ class _ResizeGrip extends StatelessWidget {
       ),
     );
   }
+}
+
+enum _NodeMenuAction {
+  copy,
+  paste,
+  duplicate,
+  front,
+  forward,
+  backward,
+  back,
+  lock,
+  visibility,
+  delete,
 }
 
 enum _ResizeHandle {

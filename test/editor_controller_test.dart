@@ -1,6 +1,8 @@
 import 'package:app_ui_designer/src/components/component_registry.dart';
 import 'package:app_ui_designer/src/editor/editor_controller.dart';
 import 'package:app_ui_designer/src/model/app_ui_project.dart';
+import 'package:app_ui_designer/src/model/ui_node.dart';
+import 'package:app_ui_designer/src/model/ui_rect.dart';
 import 'package:app_ui_designer/src/platform/designer_target.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -46,6 +48,7 @@ void main() {
         node.id: (node.frame.x, node.frame.y),
     };
 
+    controller.beginMove();
     controller.moveSelectedBy(10, 6);
     controller.commitLiveEdit();
 
@@ -63,6 +66,7 @@ void main() {
     controller.addComponent(component);
 
     final id = controller.selectedNodeId!;
+    controller.beginResizeNode(id);
     controller.resizeNodeBy(
       id,
       dx: -10000,
@@ -76,5 +80,57 @@ void main() {
 
     expect(controller.selectedNode!.frame.width, 24);
     expect(controller.selectedNode!.frame.height, 24);
+  });
+
+  test('lock and visibility survive node json roundtrip', () {
+    const node = UiNode(
+      id: 'node_a',
+      type: 'text',
+      frame: UiRect(x: 1, y: 2, width: 30, height: 40),
+      visible: false,
+      locked: true,
+    );
+
+    final restored = UiNode.fromJson(node.toJson());
+    expect(restored.visible, isFalse);
+    expect(restored.locked, isTrue);
+  });
+
+  test('copy paste creates new ids and keeps source', () {
+    final controller = EditorController(
+      AppUiProject.empty(DesignerTarget.windows),
+    );
+    final component = ComponentRegistry.forTarget(DesignerTarget.windows).first;
+    controller.addComponent(component);
+
+    final originalId = controller.selectedNodeId!;
+    controller.copySelected();
+    expect(controller.canPaste, isTrue);
+    controller.pasteClipboard();
+
+    expect(controller.activeScreen.nodes, hasLength(2));
+    expect(controller.selectedNodeId, isNot(originalId));
+    expect(
+      controller.activeScreen.nodes.map((node) => node.id).toSet(),
+      hasLength(2),
+    );
+  });
+
+  test('locked nodes do not move', () {
+    final controller = EditorController(
+      AppUiProject.empty(DesignerTarget.windows),
+    );
+    final component = ComponentRegistry.forTarget(DesignerTarget.windows).first;
+    controller.addComponent(component);
+    final id = controller.selectedNodeId!;
+    final before = controller.selectedNode!.frame;
+
+    controller.setNodeLocked(id, true);
+    controller.beginMove();
+    controller.moveSelectedBy(50, 50);
+    controller.commitLiveEdit();
+
+    expect(controller.selectedNode!.frame.x, before.x);
+    expect(controller.selectedNode!.frame.y, before.y);
   });
 }

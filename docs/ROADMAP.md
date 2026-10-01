@@ -20,6 +20,7 @@
 - [x] dirty-state tracking
 - [x] multi-selection model
 - [x] duplicate / delete
+- [x] internal copy / cut / paste
 - [ ] command objects for complex grouped edits
 
 ### Transform engine
@@ -28,6 +29,7 @@
 - [x] zoom-independent handle hit targets
 - [x] minimum sizes
 - [x] resize at canvas zoom
+- [x] locked nodes protected from move / resize / delete
 - [ ] rotation
 - [ ] group resize
 - [ ] keyboard nudging
@@ -47,14 +49,18 @@
 - [ ] smart alignment guides
 - [ ] ruler
 
-### Remaining editor operations
-- [ ] copy / paste
-- [ ] layer reorder
-- [ ] visibility / lock
-- [ ] context menus / Android long press
-- [ ] editable numeric inspector
-- [ ] mouse-wheel numeric stepping
+### Editor operations
+- [x] layer forward / backward
+- [x] bring to front / send to back
+- [x] visibility
+- [x] lock
+- [x] Windows context menu
+- [x] Android long-press menu
+- [x] editable X / Y / width / height
+- [x] numeric mouse-wheel stepping at 1 unit per notch
+- [x] editable text property
 - [ ] safe close / unsaved dialog
+- [ ] system clipboard interoperability
 
 ## M2 - Project system
 Create/open/save .appui, autosave/recovery, multiple screens, presets, stable IDs, migrations and templates.
