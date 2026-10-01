@@ -26,6 +26,7 @@ class CanvasView extends StatefulWidget {
 class _CanvasViewState extends State<CanvasView> {
   final TransformationController _transform = TransformationController();
   final GlobalKey _viewportKey = GlobalKey();
+  Offset? _lastMoveScene;
 
   double get _scale => _transform.value.getMaxScaleOnAxis();
 
@@ -41,6 +42,7 @@ class _CanvasViewState extends State<CanvasView> {
     final isWindows = widget.target == DesignerTarget.windows;
     final multiBounds =
         widget.controller.selectedCount > 1 ? widget.controller.selectionBounds : null;
+    final primaryNode = widget.controller.selectedNode;
 
     return Stack(
       children: [
@@ -108,10 +110,9 @@ class _CanvasViewState extends State<CanvasView> {
                                 additive: additive,
                                 toggle: additive,
                               ),
-                              onMoveStart: widget.controller.beginMove,
-                              onMove: (dx, dy) =>
-                                  widget.controller.moveSelectedBy(dx, dy),
-                              onMoveEnd: widget.controller.commitLiveEdit,
+                              onMoveStartGlobal: _beginMoveGlobal,
+                              onMoveGlobal: _moveGlobal,
+                              onMoveEnd: _endMoveGlobal,
                               onResizeStart: () =>
                                   widget.controller.beginResizeNode(node.id),
                               onResize: ({
@@ -132,12 +133,23 @@ class _CanvasViewState extends State<CanvasView> {
                                 bottom: bottom,
                               ),
                               onResizeEnd: widget.controller.commitLiveEdit,
-                              onRotateGlobal: (globalPosition) =>
-                                  _rotateNodeFromGlobal(node, globalPosition),
-                              onRotateEnd: widget.controller.commitLiveEdit,
                               onContextMenu: (position) =>
                                   _showNodeMenu(context, position, node),
                             ),
+                        if (primaryNode != null &&
+                            primaryNode.visible &&
+                            !primaryNode.locked &&
+                            widget.controller.selectedCount == 1)
+                          _CanvasRotationGrip(
+                            node: primaryNode,
+                            scale: _scale,
+                            onRotateGlobal: (globalPosition) =>
+                                _rotateNodeFromGlobal(
+                              primaryNode,
+                              globalPosition,
+                            ),
+                            onRotateEnd: widget.controller.commitLiveEdit,
+                          ),
                         if (multiBounds != null)
                           _MultiSelectionFrame(
                             bounds: multiBounds,
@@ -254,12 +266,34 @@ class _CanvasViewState extends State<CanvasView> {
     );
   }
 
-  void _rotateNodeFromGlobal(UiNode node, Offset globalPosition) {
+  Offset? _sceneFromGlobal(Offset globalPosition) {
     final render = _viewportKey.currentContext?.findRenderObject();
-    if (render is! RenderBox) return;
+    if (render is! RenderBox) return null;
+    return _transform.toScene(render.globalToLocal(globalPosition));
+  }
 
-    final viewportLocal = render.globalToLocal(globalPosition);
-    final scene = _transform.toScene(viewportLocal);
+  void _beginMoveGlobal(Offset globalPosition) {
+    _lastMoveScene = _sceneFromGlobal(globalPosition);
+    widget.controller.beginMove();
+  }
+
+  void _moveGlobal(Offset globalPosition) {
+    final scene = _sceneFromGlobal(globalPosition);
+    final previous = _lastMoveScene;
+    if (scene == null || previous == null) return;
+    final delta = scene - previous;
+    _lastMoveScene = scene;
+    widget.controller.moveSelectedBy(delta.dx, delta.dy);
+  }
+
+  void _endMoveGlobal() {
+    _lastMoveScene = null;
+    widget.controller.commitLiveEdit();
+  }
+
+  void _rotateNodeFromGlobal(UiNode node, Offset globalPosition) {
+    final scene = _sceneFromGlobal(globalPosition);
+    if (scene == null) return;
     final center = Offset(
       node.frame.x + node.frame.width / 2,
       node.frame.y + node.frame.height / 2,
@@ -486,14 +520,12 @@ class _NodeView extends StatelessWidget {
     required this.primary,
     required this.scale,
     required this.onSelect,
-    required this.onMoveStart,
-    required this.onMove,
+    required this.onMoveStartGlobal,
+    required this.onMoveGlobal,
     required this.onMoveEnd,
     required this.onResizeStart,
     required this.onResize,
     required this.onResizeEnd,
-    required this.onRotateGlobal,
-    required this.onRotateEnd,
     required this.onContextMenu,
   });
 
@@ -502,8 +534,8 @@ class _NodeView extends StatelessWidget {
   final bool primary;
   final double scale;
   final ValueChanged<bool> onSelect;
-  final VoidCallback onMoveStart;
-  final void Function(double dx, double dy) onMove;
+  final ValueChanged<Offset> onMoveStartGlobal;
+  final ValueChanged<Offset> onMoveGlobal;
   final VoidCallback onMoveEnd;
   final VoidCallback onResizeStart;
   final void Function({
@@ -515,8 +547,6 @@ class _NodeView extends StatelessWidget {
     required bool bottom,
   }) onResize;
   final VoidCallback onResizeEnd;
-  final ValueChanged<Offset> onRotateGlobal;
-  final VoidCallback onRotateEnd;
   final ValueChanged<Offset> onContextMenu;
 
   bool get _additiveSelection {
@@ -543,16 +573,13 @@ class _NodeView extends StatelessWidget {
               onContextMenu(details.globalPosition),
           onPanStart: node.locked
               ? null
-              : (_) {
+              : (details) {
                   if (!selected) onSelect(_additiveSelection);
-                  onMoveStart();
+                  onMoveStartGlobal(details.globalPosition);
                 },
           onPanUpdate: node.locked
               ? null
-              : (details) => onMove(
-                    details.delta.dx / scale,
-                    details.delta.dy / scale,
-                  ),
+              : (details) => onMoveGlobal(details.globalPosition),
           onPanEnd: node.locked ? null : (_) => onMoveEnd(),
           child: Stack(
             clipBehavior: Clip.none,
@@ -599,12 +626,7 @@ class _NodeView extends StatelessWidget {
                     onResize: onResize,
                     onResizeEnd: onResizeEnd,
                   ),
-                _RotationGrip(
-                  scale: scale,
-                  node: node,
-                  onRotateGlobal: onRotateGlobal,
-                  onRotateEnd: onRotateEnd,
-                ),
+
               ],
             ],
           ),
@@ -614,58 +636,118 @@ class _NodeView extends StatelessWidget {
   }
 }
 
-class _RotationGrip extends StatelessWidget {
-  const _RotationGrip({
-    required this.scale,
+class _CanvasRotationGrip extends StatelessWidget {
+  const _CanvasRotationGrip({
     required this.node,
+    required this.scale,
     required this.onRotateGlobal,
     required this.onRotateEnd,
   });
 
-  final double scale;
   final UiNode node;
+  final double scale;
   final ValueChanged<Offset> onRotateGlobal;
   final VoidCallback onRotateEnd;
 
   @override
   Widget build(BuildContext context) {
+    final theta = node.rotation * math.pi / 180;
+    final center = Offset(
+      node.frame.x + node.frame.width / 2,
+      node.frame.y + node.frame.height / 2,
+    );
+    final edgeDistance = node.frame.height / 2;
+    final handleDistance = edgeDistance + 30 / scale;
+    final edge = Offset(
+      center.dx + edgeDistance * math.sin(theta),
+      center.dy - edgeDistance * math.cos(theta),
+    );
+    final handle = Offset(
+      center.dx + handleDistance * math.sin(theta),
+      center.dy - handleDistance * math.cos(theta),
+    );
     final hitSize = 38 / scale;
     final visualSize = 14 / scale;
-    final stem = 24 / scale;
 
-    return Positioned(
-      left: node.frame.width / 2 - hitSize / 2,
-      top: -stem - hitSize,
-      width: hitSize,
-      height: hitSize + stem,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onPanUpdate: (details) => onRotateGlobal(details.globalPosition),
-        onPanEnd: (_) => onRotateEnd(),
-        child: Column(
-          children: [
-            Container(
-              width: visualSize,
-              height: visualSize,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Theme.of(context).colorScheme.surface,
-                border: Border.all(
-                  color: Theme.of(context).colorScheme.primary,
-                  width: 2 / scale,
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned.fill(
+          child: IgnorePointer(
+            child: CustomPaint(
+              painter: _RotationStemPainter(
+                from: edge,
+                to: handle,
+                width: 1 / scale,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          left: handle.dx - hitSize / 2,
+          top: handle.dy - hitSize / 2,
+          width: hitSize,
+          height: hitSize,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.grab,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onPanUpdate: (details) =>
+                  onRotateGlobal(details.globalPosition),
+              onPanEnd: (_) => onRotateEnd(),
+              child: Center(
+                child: Container(
+                  width: visualSize,
+                  height: visualSize,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Theme.of(context).colorScheme.surface,
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.primary,
+                      width: 2 / scale,
+                    ),
+                  ),
                 ),
               ),
             ),
-            Container(
-              width: 1 / scale,
-              height: stem,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
+}
+
+class _RotationStemPainter extends CustomPainter {
+  const _RotationStemPainter({
+    required this.from,
+    required this.to,
+    required this.width,
+    required this.color,
+  });
+
+  final Offset from;
+  final Offset to;
+  final double width;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawLine(
+      from,
+      to,
+      Paint()
+        ..color = color
+        ..strokeWidth = width,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _RotationStemPainter oldDelegate) =>
+      oldDelegate.from != from ||
+      oldDelegate.to != to ||
+      oldDelegate.width != width ||
+      oldDelegate.color != color;
 }
 
 class _MultiSelectionFrame extends StatelessWidget {
