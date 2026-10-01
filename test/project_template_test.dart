@@ -1,4 +1,5 @@
 import 'package:app_ui_designer/src/model/project_template.dart';
+import 'package:app_ui_designer/src/model/ui_node.dart';
 import 'package:app_ui_designer/src/platform/designer_target.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -9,9 +10,9 @@ void main() {
         final project = template.createProject('Template Test');
         final ids = <String>[];
 
-        void collect(dynamic node) {
-          ids.add(node.id as String);
-          for (final child in node.children as List) {
+        void collect(UiNode node) {
+          ids.add(node.id);
+          for (final child in node.children) {
             collect(child);
           }
         }
