@@ -63,7 +63,23 @@
 - [ ] system clipboard interoperability
 
 ## M2 - Project system
-Create/open/save .appui, autosave/recovery, multiple screens, presets, stable IDs, migrations and templates.
+- [x] create new project
+- [x] open .appui
+- [x] save / save as
+- [x] native project file picker
+- [x] Windows safe-close with save / discard / cancel
+- [x] Android back protection for dirty projects
+- [x] multiple screens
+- [x] add / duplicate / rename / delete screen
+- [x] choose start screen
+- [x] active screen independent from start screen
+- [x] stable node and screen IDs after loading
+- [ ] project rename / metadata
+- [ ] recent projects
+- [ ] autosave / recovery
+- [ ] screen presets
+- [ ] schema migrations
+- [ ] project templates
 
 ## M3 - Layout
 Fixed/fill/hug, anchors, constraints, rows/columns/stacks, Android orientation preview and resizable Windows preview.
