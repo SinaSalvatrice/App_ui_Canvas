@@ -43,6 +43,8 @@ class _CanvasViewState extends State<CanvasView> {
     final multiBounds =
         widget.controller.selectedCount > 1 ? widget.controller.selectionBounds : null;
     final primaryNode = widget.controller.selectedNode;
+    final guideX = widget.controller.activeGuideX;
+    final guideY = widget.controller.activeGuideY;
 
     return Stack(
       children: [
@@ -140,15 +142,18 @@ class _CanvasViewState extends State<CanvasView> {
                             primaryNode.visible &&
                             !primaryNode.locked &&
                             widget.controller.selectedCount == 1)
-                          _CanvasRotationGrip(
-                            node: primaryNode,
-                            scale: _scale,
-                            onRotateGlobal: (globalPosition) =>
-                                _rotateNodeFromGlobal(
-                              primaryNode,
-                              globalPosition,
+                          Positioned.fill(
+                            child: _CanvasRotationGrip(
+                              node: primaryNode,
+                              scale: _scale,
+                              onRotateGlobal: (globalPosition) =>
+                                  _rotateNodeFromGlobal(
+                                primaryNode,
+                                globalPosition,
+                              ),
+                              onRotateEnd:
+                                  widget.controller.commitLiveEdit,
                             ),
-                            onRotateEnd: widget.controller.commitLiveEdit,
                           ),
                         if (multiBounds != null)
                           _MultiSelectionFrame(
@@ -156,9 +161,9 @@ class _CanvasViewState extends State<CanvasView> {
                             scale: _scale,
                             count: widget.controller.selectedCount,
                           ),
-                        if (widget.controller.activeGuideX case final x?)
+                        if (guideX != null)
                           Positioned(
-                            left: x,
+                            left: guideX,
                             top: 0,
                             bottom: 0,
                             child: IgnorePointer(
@@ -168,9 +173,9 @@ class _CanvasViewState extends State<CanvasView> {
                               ),
                             ),
                           ),
-                        if (widget.controller.activeGuideY case final y?)
+                        if (guideY != null)
                           Positioned(
-                            top: y,
+                            top: guideY,
                             left: 0,
                             right: 0,
                             child: IgnorePointer(
@@ -626,7 +631,6 @@ class _NodeView extends StatelessWidget {
                     onResize: onResize,
                     onResizeEnd: onResizeEnd,
                   ),
-
               ],
             ],
           ),
