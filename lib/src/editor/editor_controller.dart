@@ -86,6 +86,121 @@ class EditorController extends ChangeNotifier {
 
   bool isSelected(String id) => _selectedNodeIds.contains(id);
 
+  void replaceProject(AppUiProject project) {
+    _project = project;
+    _activeScreenId = project.initialScreenId;
+    _history
+      ..clear()
+      ..add(project);
+    _historyIndex = 0;
+    _cleanProjectJson = jsonEncode(project.toJson());
+    _selectedNodeIds.clear();
+    _primarySelectedNodeId = null;
+    _clipboard = const [];
+    _resetLiveTransform();
+    notifyListeners();
+  }
+
+  void selectScreen(String id) {
+    if (id == _activeScreenId ||
+        !_project.screens.any((screen) => screen.id == id)) {
+      return;
+    }
+    _activeScreenId = id;
+    _selectedNodeIds.clear();
+    _primarySelectedNodeId = null;
+    _resetLiveTransform();
+    notifyListeners();
+  }
+
+  void addScreen() {
+    final id = _newScreenId();
+    final screen = UiScreen.empty(
+      id: id,
+      name: 'Screen ' + (_project.screens.length + 1).toString(),
+      target: _project.target,
+    );
+    _project = _project.copyWith(screens: [..._project.screens, screen]);
+    _activeScreenId = id;
+    _selectedNodeIds.clear();
+    _primarySelectedNodeId = null;
+    _pushHistory();
+    notifyListeners();
+  }
+
+  void duplicateActiveScreen() {
+    final source = activeScreen;
+    final id = _newScreenId();
+    final copy = UiScreen(
+      id: id,
+      name: source.name + ' Copy',
+      width: source.width,
+      height: source.height,
+      nodes: source.nodes
+          .map((node) => _cloneWithNewIds(node, offset: 0))
+          .toList(),
+    );
+    _project = _project.copyWith(screens: [..._project.screens, copy]);
+    _activeScreenId = id;
+    _selectedNodeIds.clear();
+    _primarySelectedNodeId = null;
+    _pushHistory();
+    notifyListeners();
+  }
+
+  void renameScreen(String id, String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty ||
+        !_project.screens.any((screen) => screen.id == id)) {
+      return;
+    }
+    _project = _project.copyWith(
+      screens: _project.screens
+          .map(
+            (screen) => screen.id == id
+                ? screen.copyWith(name: trimmed)
+                : screen,
+          )
+          .toList(),
+    );
+    _pushHistory();
+    notifyListeners();
+  }
+
+  void setInitialScreen(String id) {
+    if (id == _project.initialScreenId ||
+        !_project.screens.any((screen) => screen.id == id)) {
+      return;
+    }
+    _project = _project.copyWith(initialScreenId: id);
+    _pushHistory();
+    notifyListeners();
+  }
+
+  void deleteScreen(String id) {
+    if (_project.screens.length <= 1 ||
+        !_project.screens.any((screen) => screen.id == id)) {
+      return;
+    }
+
+    final remaining =
+        _project.screens.where((screen) => screen.id != id).toList();
+    final nextInitial = _project.initialScreenId == id
+        ? remaining.first.id
+        : _project.initialScreenId;
+    _project = _project.copyWith(
+      initialScreenId: nextInitial,
+      screens: remaining,
+    );
+    if (_activeScreenId == id) {
+      _activeScreenId = remaining.first.id;
+    }
+    _selectedNodeIds.clear();
+    _primarySelectedNodeId = null;
+    _pushHistory();
+    notifyListeners();
+  }
+
   void markClean() {
     _cleanProjectJson = jsonEncode(_project.toJson());
     notifyListeners();
