@@ -327,24 +327,34 @@ class _CanvasViewState extends State<CanvasView> {
     switch (action) {
       case _NodeMenuAction.copy:
         widget.controller.copySelected();
+        break;
       case _NodeMenuAction.paste:
         widget.controller.pasteClipboard();
+        break;
       case _NodeMenuAction.duplicate:
         widget.controller.duplicateSelected();
+        break;
       case _NodeMenuAction.front:
         widget.controller.bringSelectedToFront();
+        break;
       case _NodeMenuAction.forward:
         widget.controller.moveSelectedLayer(1);
+        break;
       case _NodeMenuAction.backward:
         widget.controller.moveSelectedLayer(-1);
+        break;
       case _NodeMenuAction.back:
         widget.controller.sendSelectedToBack();
+        break;
       case _NodeMenuAction.lock:
         widget.controller.setNodeLocked(node.id, !node.locked);
+        break;
       case _NodeMenuAction.visibility:
         widget.controller.setNodeVisible(node.id, !node.visible);
+        break;
       case _NodeMenuAction.delete:
         widget.controller.deleteSelected();
+        break;
     }
   }
 
