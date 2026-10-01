@@ -1,6 +1,7 @@
 import 'package:app_ui_designer/src/components/component_registry.dart';
 import 'package:app_ui_designer/src/editor/editor_controller.dart';
 import 'package:app_ui_designer/src/model/app_ui_project.dart';
+import 'package:app_ui_designer/src/model/ui_layout_spec.dart';
 import 'package:app_ui_designer/src/model/ui_node.dart';
 import 'package:app_ui_designer/src/model/ui_rect.dart';
 import 'package:app_ui_designer/src/model/screen_preset.dart';
@@ -227,5 +228,82 @@ void main() {
     controller.applyScreenPreset(ScreenPreset.windowsFullHd);
     expect(controller.activeScreen.width, 1920);
     expect(controller.activeScreen.height, 1080);
+  });
+  test('right anchor follows screen width changes', () {
+    final controller = EditorController(
+      AppUiProject.empty(DesignerTarget.windows),
+    );
+    final component = ComponentRegistry.forTarget(DesignerTarget.windows).first;
+    controller.addComponent(component);
+
+    final before = controller.selectedNode!.frame.x;
+    controller.updatePrimaryLayout(
+      controller.selectedNode!.layout.copyWith(
+        horizontalAnchor: UiHorizontalAnchor.right,
+      ),
+    );
+    controller.applyScreenPreset(ScreenPreset.windowsFullHd);
+
+    expect(controller.selectedNode!.frame.x, before + 640);
+  });
+
+  test('fill width preserves left and right insets', () {
+    final controller = EditorController(
+      AppUiProject.empty(DesignerTarget.windows),
+    );
+    final component = ComponentRegistry.forTarget(DesignerTarget.windows).first;
+    controller.addComponent(component);
+
+    final before = controller.selectedNode!.frame;
+    controller.updatePrimaryLayout(
+      controller.selectedNode!.layout.copyWith(
+        widthMode: UiSizeMode.fill,
+      ),
+    );
+    controller.applyScreenPreset(ScreenPreset.windowsFullHd);
+
+    expect(controller.selectedNode!.frame.x, before.x);
+    expect(controller.selectedNode!.frame.width, before.width + 640);
+  });
+
+  test('hug width follows text content', () {
+    final controller = EditorController(
+      AppUiProject.empty(DesignerTarget.windows),
+    );
+    final textComponent = ComponentRegistry.forTarget(DesignerTarget.windows)
+        .firstWhere((component) => component.type == 'text');
+    controller.addComponent(textComponent);
+
+    controller.updatePrimaryLayout(
+      controller.selectedNode!.layout.copyWith(
+        widthMode: UiSizeMode.hug,
+      ),
+    );
+    final shortWidth = controller.selectedNode!.frame.width;
+
+    controller.updatePrimaryProperty(
+      'text',
+      'A much longer piece of text',
+    );
+
+    expect(controller.selectedNode!.frame.width, greaterThan(shortWidth));
+  });
+
+  test('fill respects max width constraint', () {
+    final controller = EditorController(
+      AppUiProject.empty(DesignerTarget.windows),
+    );
+    final component = ComponentRegistry.forTarget(DesignerTarget.windows).first;
+    controller.addComponent(component);
+
+    controller.updatePrimaryLayout(
+      controller.selectedNode!.layout.copyWith(
+        widthMode: UiSizeMode.fill,
+        maxWidth: 300,
+      ),
+    );
+    controller.applyScreenPreset(ScreenPreset.windowsFullHd);
+
+    expect(controller.selectedNode!.frame.width, 300);
   });
 }

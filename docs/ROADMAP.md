@@ -86,7 +86,17 @@
 - [x] project templates
 
 ## M3 - Layout
-Fixed/fill/hug, anchors, constraints, rows/columns/stacks, Android orientation preview and resizable Windows preview.
+- [x] persistent responsive layout spec
+- [x] Fixed / Fill / Hug sizing
+- [x] horizontal left / center / right anchors
+- [x] vertical top / center / bottom anchors
+- [x] min / max size constraints
+- [x] responsive reflow when screen preset changes
+- [x] Hug reflow when text content changes
+- [ ] arbitrary resizable Windows preview
+- [ ] Android portrait / landscape preview toggle
+- [ ] Row / Column / Stack containers
+- [ ] nested parent-relative constraints
 
 ## M4 - Component libraries
 Windows: title/menu bars, navigation, split views, toolbars, context menus, tree/list/grid and dialogs.

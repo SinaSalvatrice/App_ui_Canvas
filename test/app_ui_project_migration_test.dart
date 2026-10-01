@@ -60,4 +60,43 @@ void main() {
       throwsA(isA<FormatException>()),
     );
   });
+  test('schema v2 nodes migrate to responsive layout defaults', () {
+    final v2 = <String, Object?>{
+      'schemaVersion': 2,
+      'id': 'v2_project',
+      'name': 'V2',
+      'target': 'windows',
+      'initialScreenId': 'screen_home',
+      'metadata': <String, Object?>{},
+      'screens': <Object?>[
+        <String, Object?>{
+          'id': 'screen_home',
+          'name': 'Home',
+          'width': 1280,
+          'height': 720,
+          'nodes': <Object?>[
+            <String, Object?>{
+              'id': 'node_1',
+              'type': 'text',
+              'frame': <String, Object?>{
+                'x': 10,
+                'y': 20,
+                'width': 100,
+                'height': 40,
+              },
+              'properties': <String, Object?>{'text': 'Hello'},
+              'children': <Object?>[],
+            },
+          ],
+        },
+      ],
+    };
+
+    final project = AppUiProject.fromJson(v2);
+    final node = project.screens.first.nodes.first;
+
+    expect(project.schemaVersion, AppUiProject.currentSchemaVersion);
+    expect(node.layout.widthMode.name, 'fixed');
+    expect(node.layout.heightMode.name, 'fixed');
+  });
 }
