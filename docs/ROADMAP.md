@@ -74,7 +74,8 @@
 - [x] choose start screen
 - [x] active screen independent from start screen
 - [x] stable node and screen IDs after loading
-- [ ] project rename / metadata
+- [x] project rename
+- [ ] project metadata
 - [ ] recent projects
 - [ ] autosave / recovery
 - [ ] screen presets
