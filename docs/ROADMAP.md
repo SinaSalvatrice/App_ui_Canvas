@@ -93,8 +93,8 @@
 - [x] min / max size constraints
 - [x] responsive reflow when screen preset changes
 - [x] Hug reflow when text content changes
-- [ ] arbitrary resizable Windows preview
-- [ ] Android portrait / landscape preview toggle
+- [x] arbitrary resizable Windows preview
+- [x] Android portrait / landscape preview toggle
 - [ ] Row / Column / Stack containers
 - [ ] nested parent-relative constraints
 

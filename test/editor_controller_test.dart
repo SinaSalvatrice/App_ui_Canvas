@@ -306,4 +306,40 @@ void main() {
 
     expect(controller.selectedNode!.frame.width, 300);
   });
+  test('orientation toggle swaps screen dimensions and reflows anchors', () {
+    final controller = EditorController(
+      AppUiProject.empty(DesignerTarget.android),
+    );
+    final component = ComponentRegistry.forTarget(DesignerTarget.android).first;
+    controller.addComponent(component);
+
+    controller.updatePrimaryLayout(
+      controller.selectedNode!.layout.copyWith(
+        horizontalAnchor: UiHorizontalAnchor.right,
+      ),
+    );
+    final before = controller.selectedNode!.frame.x;
+
+    controller.toggleScreenOrientation();
+
+    expect(controller.activeScreen.width, 915);
+    expect(controller.activeScreen.height, 412);
+    expect(controller.selectedNode!.frame.x, before + 503);
+  });
+
+  test('live screen resize coalesces into one history step on commit', () {
+    final controller = EditorController(
+      AppUiProject.empty(DesignerTarget.windows),
+    );
+
+    controller.resizeActiveScreen(1400, 800, commit: false);
+    expect(controller.canUndo, isFalse);
+
+    controller.commitLiveEdit();
+    expect(controller.canUndo, isTrue);
+
+    controller.undo();
+    expect(controller.activeScreen.width, 1280);
+    expect(controller.activeScreen.height, 720);
+  });
 }
