@@ -55,6 +55,11 @@ echo.
 echo Ausgabe:
 echo %CD%\build\windows\x64\runner\Release
 echo.
+
+if exist "build\windows\x64\runner\Release" (
+  explorer "build\windows\x64\runner\Release"
+)
+
 pause
 exit /b 0
 
