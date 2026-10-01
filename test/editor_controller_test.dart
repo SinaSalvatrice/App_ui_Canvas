@@ -172,4 +172,46 @@ void main() {
     expect(controller.selectedCount, 2);
     expect(controller.selectionBounds, isNotNull);
   });
+  test('screen operations preserve a valid active screen', () {
+    final controller = EditorController(
+      AppUiProject.empty(DesignerTarget.windows),
+    );
+
+    controller.addScreen();
+    expect(controller.project.screens, hasLength(2));
+    final addedId = controller.activeScreenId;
+
+    controller.renameScreen(addedId, 'Settings');
+    expect(controller.activeScreen.name, 'Settings');
+
+    controller.duplicateActiveScreen();
+    expect(controller.project.screens, hasLength(3));
+    final duplicateId = controller.activeScreenId;
+    expect(duplicateId, isNot(addedId));
+
+    controller.deleteScreen(duplicateId);
+    expect(controller.project.screens, hasLength(2));
+    expect(
+      controller.project.screens.any(
+        (screen) => screen.id == controller.activeScreenId,
+      ),
+      isTrue,
+    );
+  });
+
+  test('replacing a project resets dirty state and history', () {
+    final controller = EditorController(
+      AppUiProject.empty(DesignerTarget.windows),
+    );
+    final component = ComponentRegistry.forTarget(DesignerTarget.windows).first;
+    controller.addComponent(component);
+    expect(controller.isDirty, isTrue);
+
+    final loaded = AppUiProject.empty(DesignerTarget.windows);
+    controller.replaceProject(loaded);
+
+    expect(controller.isDirty, isFalse);
+    expect(controller.canUndo, isFalse);
+    expect(controller.activeScreenId, loaded.initialScreenId);
+  });
 }
