@@ -747,6 +747,7 @@ class EditorController extends ChangeNotifier {
     if (!canUndo) return;
     _historyIndex -= 1;
     _project = _history[_historyIndex];
+    _ensureActiveScreenExists();
     _resetLiveTransform();
     _ensureSelectionExists();
     notifyListeners();
@@ -756,12 +757,48 @@ class EditorController extends ChangeNotifier {
     if (!canRedo) return;
     _historyIndex += 1;
     _project = _history[_historyIndex];
+    _ensureActiveScreenExists();
     _resetLiveTransform();
     _ensureSelectionExists();
     notifyListeners();
   }
 
-  String _newNodeId() => 'node_${_nextNodeNumber++}';
+  String _newNodeId() {
+    final existing = _allNodeIds();
+    String id;
+    do {
+      id = 'node_' + (_nextNodeNumber++).toString();
+    } while (existing.contains(id));
+    return id;
+  }
+
+  String _newScreenId() {
+    var number = _project.screens.length + 1;
+    String id;
+    do {
+      id = 'screen_' + number.toString();
+      number += 1;
+    } while (_project.screens.any((screen) => screen.id == id));
+    return id;
+  }
+
+  Set<String> _allNodeIds() {
+    final ids = <String>{};
+
+    void visit(UiNode node) {
+      ids.add(node.id);
+      for (final child in node.children) {
+        visit(child);
+      }
+    }
+
+    for (final screen in _project.screens) {
+      for (final node in screen.nodes) {
+        visit(node);
+      }
+    }
+    return ids;
+  }
 
   double _snap(double value) {
     if (!snapEnabled) return value;
@@ -937,6 +974,15 @@ class EditorController extends ChangeNotifier {
     _resizeDeltaX = 0;
     _resizeDeltaY = 0;
     _clearActiveGuides();
+  }
+
+  void _ensureActiveScreenExists() {
+    if (_project.screens.any((screen) => screen.id == _activeScreenId)) {
+      return;
+    }
+    _activeScreenId = _project.screens.first.id;
+    _selectedNodeIds.clear();
+    _primarySelectedNodeId = null;
   }
 
   void _ensureSelectionExists() {
