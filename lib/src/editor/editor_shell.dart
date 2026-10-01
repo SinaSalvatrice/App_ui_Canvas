@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../components/component_definition.dart';
 import '../components/component_registry.dart';
+import '../model/ui_screen.dart';
 import '../platform/designer_target.dart';
 import 'canvas_view.dart';
 import 'editor_controller.dart';
@@ -13,11 +14,21 @@ class EditorShell extends StatelessWidget {
   const EditorShell({
     required this.target,
     required this.controller,
+    required this.onNewProject,
+    required this.onOpenProject,
+    required this.onSaveProject,
+    required this.onSaveProjectAs,
+    this.projectPath,
     super.key,
   });
 
   final DesignerTarget target;
   final EditorController controller;
+  final String? projectPath;
+  final Future<void> Function() onNewProject;
+  final Future<void> Function() onOpenProject;
+  final Future<void> Function() onSaveProject;
+  final Future<void> Function() onSaveProjectAs;
 
   @override
   Widget build(BuildContext context) {
@@ -30,10 +41,20 @@ class EditorShell extends StatelessWidget {
           DesignerTarget.windows => _WindowsDesigner(
               controller: controller,
               components: components,
+              projectPath: projectPath,
+              onNewProject: onNewProject,
+              onOpenProject: onOpenProject,
+              onSaveProject: onSaveProject,
+              onSaveProjectAs: onSaveProjectAs,
             ),
           DesignerTarget.android => _AndroidDesigner(
               controller: controller,
               components: components,
+              projectPath: projectPath,
+              onNewProject: onNewProject,
+              onOpenProject: onOpenProject,
+              onSaveProject: onSaveProject,
+              onSaveProjectAs: onSaveProjectAs,
             ),
         };
       },
@@ -45,14 +66,25 @@ class _WindowsDesigner extends StatelessWidget {
   const _WindowsDesigner({
     required this.controller,
     required this.components,
+    required this.projectPath,
+    required this.onNewProject,
+    required this.onOpenProject,
+    required this.onSaveProject,
+    required this.onSaveProjectAs,
   });
 
   final EditorController controller;
   final List<ComponentDefinition> components;
+  final String? projectPath;
+  final Future<void> Function() onNewProject;
+  final Future<void> Function() onOpenProject;
+  final Future<void> Function() onSaveProject;
+  final Future<void> Function() onSaveProjectAs;
 
   void _nudgeIfCanvasFocused(double dx, double dy) {
     final focusContext = FocusManager.instance.primaryFocus?.context;
-    final editing = focusContext?.findAncestorWidgetOfExactType<EditableText>() != null;
+    final editing =
+        focusContext?.findAncestorWidgetOfExactType<EditableText>() != null;
     if (editing) return;
     controller.nudgeSelected(dx, dy);
   }
@@ -61,6 +93,17 @@ class _WindowsDesigner extends StatelessWidget {
   Widget build(BuildContext context) {
     return CallbackShortcuts(
       bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.keyN, control: true):
+            () => onNewProject(),
+        const SingleActivator(LogicalKeyboardKey.keyO, control: true):
+            () => onOpenProject(),
+        const SingleActivator(LogicalKeyboardKey.keyS, control: true):
+            () => onSaveProject(),
+        const SingleActivator(
+          LogicalKeyboardKey.keyS,
+          control: true,
+          shift: true,
+        ): () => onSaveProjectAs(),
         const SingleActivator(LogicalKeyboardKey.keyZ, control: true):
             controller.undo,
         const SingleActivator(LogicalKeyboardKey.keyY, control: true):
@@ -105,21 +148,40 @@ class _WindowsDesigner extends StatelessWidget {
           body: SafeArea(
             child: Column(
               children: [
-                _DesktopTopBar(controller: controller),
+                _DesktopTopBar(
+                  controller: controller,
+                  projectPath: projectPath,
+                  onNewProject: onNewProject,
+                  onOpenProject: onOpenProject,
+                  onSaveProject: onSaveProject,
+                  onSaveProjectAs: onSaveProjectAs,
+                ),
                 const Divider(height: 1),
                 Expanded(
                   child: Row(
                     children: [
                       SizedBox(
-                        width: 220,
-                        child: _ComponentLibrary(
-                          components: components,
-                          onAdd: controller.addComponent,
+                        width: 230,
+                        child: Column(
+                          children: [
+                            SizedBox(
+                              height: 210,
+                              child: ScreensPanel(controller: controller),
+                            ),
+                            const Divider(height: 1),
+                            Expanded(
+                              child: _ComponentLibrary(
+                                components: components,
+                                onAdd: controller.addComponent,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const VerticalDivider(width: 1),
                       Expanded(
                         child: CanvasView(
+                          key: ValueKey(controller.activeScreenId),
                           controller: controller,
                           target: DesignerTarget.windows,
                         ),
@@ -145,25 +207,39 @@ class _AndroidDesigner extends StatelessWidget {
   const _AndroidDesigner({
     required this.controller,
     required this.components,
+    required this.projectPath,
+    required this.onNewProject,
+    required this.onOpenProject,
+    required this.onSaveProject,
+    required this.onSaveProjectAs,
   });
 
   final EditorController controller;
   final List<ComponentDefinition> components;
+  final String? projectPath;
+  final Future<void> Function() onNewProject;
+  final Future<void> Function() onOpenProject;
+  final Future<void> Function() onSaveProject;
+  final Future<void> Function() onSaveProjectAs;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          children: [
-            const Text('App UI Canvas'),
-            if (controller.isDirty) ...[
-              const SizedBox(width: 8),
-              const Text('•', style: TextStyle(fontWeight: FontWeight.bold)),
-            ],
-          ],
+        title: Tooltip(
+          message: projectPath ?? 'Unsaved project',
+          child: Text(
+            controller.isDirty
+                ? '${controller.project.name} •'
+                : controller.project.name,
+          ),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Save',
+            onPressed: () => onSaveProject(),
+            icon: const Icon(Icons.save_outlined),
+          ),
           IconButton(
             tooltip: 'Undo',
             onPressed: controller.canUndo ? controller.undo : null,
@@ -174,14 +250,40 @@ class _AndroidDesigner extends StatelessWidget {
             onPressed: controller.canRedo ? controller.redo : null,
             icon: const Icon(Icons.redo),
           ),
-          IconButton(
-            tooltip: 'Paste',
-            onPressed: controller.canPaste ? controller.pasteClipboard : null,
-            icon: const Icon(Icons.paste),
+          PopupMenuButton<_ProjectMenuAction>(
+            tooltip: 'Project',
+            onSelected: (action) {
+              switch (action) {
+                case _ProjectMenuAction.newProject:
+                  onNewProject();
+                  break;
+                case _ProjectMenuAction.open:
+                  onOpenProject();
+                  break;
+                case _ProjectMenuAction.saveAs:
+                  onSaveProjectAs();
+                  break;
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: _ProjectMenuAction.newProject,
+                child: Text('New project'),
+              ),
+              PopupMenuItem(
+                value: _ProjectMenuAction.open,
+                child: Text('Open project'),
+              ),
+              PopupMenuItem(
+                value: _ProjectMenuAction.saveAs,
+                child: Text('Save as'),
+              ),
+            ],
           ),
         ],
       ),
       body: CanvasView(
+        key: ValueKey(controller.activeScreenId),
         controller: controller,
         target: DesignerTarget.android,
       ),
@@ -191,6 +293,15 @@ class _AndroidDesigner extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
+              _BottomTool(
+                icon: Icons.dashboard_outlined,
+                label: 'Screens',
+                onTap: () => _showSheet(
+                  context,
+                  title: 'Screens',
+                  child: ScreensPanel(controller: controller),
+                ),
+              ),
               _BottomTool(
                 icon: Icons.add_box_outlined,
                 label: 'Components',
@@ -263,25 +374,67 @@ class _AndroidDesigner extends StatelessWidget {
 }
 
 class _DesktopTopBar extends StatelessWidget {
-  const _DesktopTopBar({required this.controller});
+  const _DesktopTopBar({
+    required this.controller,
+    required this.projectPath,
+    required this.onNewProject,
+    required this.onOpenProject,
+    required this.onSaveProject,
+    required this.onSaveProjectAs,
+  });
 
   final EditorController controller;
+  final String? projectPath;
+  final Future<void> Function() onNewProject;
+  final Future<void> Function() onOpenProject;
+  final Future<void> Function() onSaveProject;
+  final Future<void> Function() onSaveProjectAs;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: 56,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
         child: Row(
           children: [
             const Text(
               'App UI Canvas',
               style: TextStyle(fontWeight: FontWeight.w700),
             ),
-            const SizedBox(width: 14),
-            const Chip(label: Text('Windows')),
             const SizedBox(width: 10),
+            const Chip(label: Text('Windows')),
+            const SizedBox(width: 8),
+            IconButton(
+              tooltip: 'New (Ctrl+N)',
+              onPressed: () => onNewProject(),
+              icon: const Icon(Icons.note_add_outlined),
+            ),
+            IconButton(
+              tooltip: 'Open (Ctrl+O)',
+              onPressed: () => onOpenProject(),
+              icon: const Icon(Icons.folder_open),
+            ),
+            IconButton(
+              tooltip: 'Save (Ctrl+S)',
+              onPressed: () => onSaveProject(),
+              icon: const Icon(Icons.save_outlined),
+            ),
+            PopupMenuButton<_SaveMenuAction>(
+              tooltip: 'Save options',
+              onSelected: (action) {
+                if (action == _SaveMenuAction.saveAs) {
+                  onSaveProjectAs();
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: _SaveMenuAction.saveAs,
+                  child: Text('Save as…  Ctrl+Shift+S'),
+                ),
+              ],
+            ),
+            const VerticalDivider(indent: 12, endIndent: 12),
             IconButton(
               tooltip: 'Undo',
               onPressed: controller.canUndo ? controller.undo : null,
@@ -291,17 +444,6 @@ class _DesktopTopBar extends StatelessWidget {
               tooltip: 'Redo',
               onPressed: controller.canRedo ? controller.redo : null,
               icon: const Icon(Icons.redo),
-            ),
-            IconButton(
-              tooltip: 'Copy',
-              onPressed:
-                  controller.selectedCount == 0 ? null : controller.copySelected,
-              icon: const Icon(Icons.copy),
-            ),
-            IconButton(
-              tooltip: 'Paste',
-              onPressed: controller.canPaste ? controller.pasteClipboard : null,
-              icon: const Icon(Icons.paste),
             ),
             IconButton(
               tooltip: 'Duplicate',
@@ -318,12 +460,16 @@ class _DesktopTopBar extends StatelessWidget {
               icon: const Icon(Icons.delete_outline),
             ),
             const Spacer(),
-            Text(
-              controller.isDirty
-                  ? '${controller.project.name} •'
-                  : controller.project.name,
+            Tooltip(
+              message: projectPath ?? 'Unsaved project',
+              child: Text(
+                controller.isDirty
+                    ? '${controller.project.name} •'
+                    : controller.project.name,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             const OutlinedButton(
               onPressed: null,
               child: Text('Preview'),
@@ -337,6 +483,157 @@ class _DesktopTopBar extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class ScreensPanel extends StatelessWidget {
+  const ScreensPanel({
+    required this.controller,
+    super.key,
+  });
+
+  final EditorController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 6, 4),
+          child: Row(
+            children: [
+              Text('Screens', style: Theme.of(context).textTheme.titleSmall),
+              const Spacer(),
+              IconButton(
+                tooltip: 'Duplicate screen',
+                visualDensity: VisualDensity.compact,
+                onPressed: controller.duplicateActiveScreen,
+                icon: const Icon(Icons.copy_outlined, size: 18),
+              ),
+              IconButton(
+                tooltip: 'Add screen',
+                visualDensity: VisualDensity.compact,
+                onPressed: controller.addScreen,
+                icon: const Icon(Icons.add, size: 20),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            children: [
+              for (final screen in controller.project.screens)
+                _ScreenTile(controller: controller, screen: screen),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ScreenTile extends StatelessWidget {
+  const _ScreenTile({
+    required this.controller,
+    required this.screen,
+  });
+
+  final EditorController controller;
+  final UiScreen screen;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = controller.activeScreenId == screen.id;
+    final initial = controller.project.initialScreenId == screen.id;
+
+    return ListTile(
+      dense: true,
+      selected: active,
+      leading: Icon(
+        initial ? Icons.home_filled : Icons.crop_portrait,
+        size: 18,
+      ),
+      title: Text(
+        screen.name,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        '${screen.width.toInt()} × ${screen.height.toInt()}',
+      ),
+      onTap: () => controller.selectScreen(screen.id),
+      onLongPress: () => _rename(context),
+      trailing: PopupMenuButton<_ScreenMenuAction>(
+        onSelected: (action) {
+          switch (action) {
+            case _ScreenMenuAction.rename:
+              _rename(context);
+              break;
+            case _ScreenMenuAction.duplicate:
+              controller.selectScreen(screen.id);
+              controller.duplicateActiveScreen();
+              break;
+            case _ScreenMenuAction.makeStart:
+              controller.setInitialScreen(screen.id);
+              break;
+            case _ScreenMenuAction.delete:
+              controller.deleteScreen(screen.id);
+              break;
+          }
+        },
+        itemBuilder: (context) => [
+          const PopupMenuItem(
+            value: _ScreenMenuAction.rename,
+            child: Text('Rename'),
+          ),
+          const PopupMenuItem(
+            value: _ScreenMenuAction.duplicate,
+            child: Text('Duplicate'),
+          ),
+          PopupMenuItem(
+            value: _ScreenMenuAction.makeStart,
+            enabled: !initial,
+            child: const Text('Make start screen'),
+          ),
+          PopupMenuItem(
+            value: _ScreenMenuAction.delete,
+            enabled: controller.project.screens.length > 1,
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _rename(BuildContext context) async {
+    final textController = TextEditingController(text: screen.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename screen'),
+        content: TextField(
+          controller: textController,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Name'),
+          onSubmitted: (value) => Navigator.of(context).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(context).pop(textController.text),
+            child: const Text('Rename'),
+          ),
+        ],
+      ),
+    );
+    textController.dispose();
+    if (name != null) {
+      controller.renameScreen(screen.id, name);
+    }
   }
 }
 
@@ -357,7 +654,7 @@ class _BottomTool extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -456,4 +753,19 @@ class _RightPanelState extends State<_RightPanel> {
       ],
     );
   }
+}
+
+enum _SaveMenuAction { saveAs }
+
+enum _ProjectMenuAction {
+  newProject,
+  open,
+  saveAs,
+}
+
+enum _ScreenMenuAction {
+  rename,
+  duplicate,
+  makeStart,
+  delete,
 }
