@@ -46,7 +46,11 @@ class _AppUiDesignerAppState extends State<AppUiDesignerApp>
   }
 
   @override
-  Future<void> onWindowClose() async {
+  void onWindowClose() {
+    _handleWindowClose();
+  }
+
+  Future<void> _handleWindowClose() async {
     if (_closing || !mounted) return;
 
     if (!controller.isDirty) {
