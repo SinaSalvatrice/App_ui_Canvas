@@ -1,3 +1,4 @@
+import '../platform/designer_target.dart';
 import 'ui_node.dart';
 
 class UiScreen {
@@ -15,11 +16,38 @@ class UiScreen {
   final double height;
   final List<UiNode> nodes;
 
-  UiScreen copyWith({List<UiNode>? nodes}) => UiScreen(
+  factory UiScreen.empty({
+    required String id,
+    required String name,
+    required DesignerTarget target,
+  }) {
+    return switch (target) {
+      DesignerTarget.windows => UiScreen(
+          id: id,
+          name: name,
+          width: 1280,
+          height: 720,
+        ),
+      DesignerTarget.android => UiScreen(
+          id: id,
+          name: name,
+          width: 412,
+          height: 915,
+        ),
+    };
+  }
+
+  UiScreen copyWith({
+    String? name,
+    double? width,
+    double? height,
+    List<UiNode>? nodes,
+  }) =>
+      UiScreen(
         id: id,
-        name: name,
-        width: width,
-        height: height,
+        name: name ?? this.name,
+        width: width ?? this.width,
+        height: height ?? this.height,
         nodes: nodes ?? this.nodes,
       );
 
@@ -37,7 +65,11 @@ class UiScreen {
         width: (json['width'] as num).toDouble(),
         height: (json['height'] as num).toDouble(),
         nodes: ((json['nodes'] as List?) ?? const [])
-            .map((item) => UiNode.fromJson(Map<String, Object?>.from(item as Map)))
+            .map(
+              (item) => UiNode.fromJson(
+                Map<String, Object?>.from(item as Map),
+              ),
+            )
             .toList(),
       );
 }

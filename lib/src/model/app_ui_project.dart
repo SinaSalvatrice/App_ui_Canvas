@@ -21,20 +21,11 @@ class AppUiProject {
   final List<UiScreen> screens;
 
   factory AppUiProject.empty(DesignerTarget target) {
-    final screen = switch (target) {
-      DesignerTarget.windows => const UiScreen(
-          id: 'screen_home',
-          name: 'Home',
-          width: 1280,
-          height: 720,
-        ),
-      DesignerTarget.android => const UiScreen(
-          id: 'screen_home',
-          name: 'Home',
-          width: 412,
-          height: 915,
-        ),
-    };
+    final screen = UiScreen.empty(
+      id: 'screen_home',
+      name: 'Home',
+      target: target,
+    );
     return AppUiProject(
       schemaVersion: currentSchemaVersion,
       id: 'project_untitled',
@@ -45,12 +36,18 @@ class AppUiProject {
     );
   }
 
-  AppUiProject copyWith({List<UiScreen>? screens}) => AppUiProject(
+  AppUiProject copyWith({
+    String? id,
+    String? name,
+    String? initialScreenId,
+    List<UiScreen>? screens,
+  }) =>
+      AppUiProject(
         schemaVersion: schemaVersion,
-        id: id,
-        name: name,
+        id: id ?? this.id,
+        name: name ?? this.name,
         target: target,
-        initialScreenId: initialScreenId,
+        initialScreenId: initialScreenId ?? this.initialScreenId,
         screens: screens ?? this.screens,
       );
 
@@ -68,15 +65,31 @@ class AppUiProject {
     if (version != currentSchemaVersion) {
       throw FormatException('Unsupported .appui schema version: $version');
     }
+    final screens = (json['screens']! as List)
+        .map(
+          (item) => UiScreen.fromJson(
+            Map<String, Object?>.from(item as Map),
+          ),
+        )
+        .toList();
+    if (screens.isEmpty) {
+      throw const FormatException('.appui project has no screens.');
+    }
+
+    final initialScreenId = json['initialScreenId']! as String;
+    if (!screens.any((screen) => screen.id == initialScreenId)) {
+      throw const FormatException(
+        '.appui initialScreenId does not reference an existing screen.',
+      );
+    }
+
     return AppUiProject(
       schemaVersion: version,
       id: json['id']! as String,
       name: json['name']! as String,
       target: DesignerTarget.values.byName(json['target']! as String),
-      initialScreenId: json['initialScreenId']! as String,
-      screens: (json['screens']! as List)
-          .map((item) => UiScreen.fromJson(Map<String, Object?>.from(item as Map)))
-          .toList(),
+      initialScreenId: initialScreenId,
+      screens: screens,
     );
   }
 }
