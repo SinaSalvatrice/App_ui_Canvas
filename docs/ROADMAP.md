@@ -75,12 +75,12 @@
 - [x] active screen independent from start screen
 - [x] stable node and screen IDs after loading
 - [x] project rename
-- [ ] project metadata
+- [x] project metadata
 - [x] recent projects
 - [x] autosave / recovery
 - [x] screen presets
-- [ ] schema migrations
-- [ ] project templates
+- [x] schema migrations (v1 -> v2)
+- [x] project templates
 
 ## M3 - Layout
 Fixed/fill/hug, anchors, constraints, rows/columns/stacks, Android orientation preview and resizable Windows preview.

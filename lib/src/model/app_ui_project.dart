@@ -87,8 +87,9 @@ class AppUiProject {
       );
     }
 
-    final metadataJson =
-        Map<String, Object?>.from(migrated['metadata']! as Map);
+    final metadataJson = Map<String, Object?>.from(
+      (migrated['metadata'] as Map?) ?? const {},
+    );
 
     return AppUiProject(
       schemaVersion: currentSchemaVersion,
