@@ -226,12 +226,15 @@ class _AndroidDesigner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Tooltip(
-          message: projectPath ?? 'Unsaved project',
-          child: Text(
-            controller.isDirty
-                ? '${controller.project.name} •'
-                : controller.project.name,
+        title: GestureDetector(
+          onLongPress: () => _renameProjectDialog(context, controller),
+          child: Tooltip(
+            message: projectPath ?? 'Unsaved project',
+            child: Text(
+              controller.isDirty
+                  ? '${controller.project.name} •'
+                  : controller.project.name,
+            ),
           ),
         ),
         actions: [
@@ -462,11 +465,19 @@ class _DesktopTopBar extends StatelessWidget {
             const Spacer(),
             Tooltip(
               message: projectPath ?? 'Unsaved project',
-              child: Text(
-                controller.isDirty
-                    ? '${controller.project.name} •'
-                    : controller.project.name,
-                overflow: TextOverflow.ellipsis,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(6),
+                onTap: () => _renameProjectDialog(context, controller),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  child: Text(
+                    controller.isDirty
+                        ? '${controller.project.name} •'
+                        : controller.project.name,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ),
             ),
             const SizedBox(width: 10),
@@ -768,4 +779,40 @@ enum _ScreenMenuAction {
   duplicate,
   makeStart,
   delete,
+}
+
+
+Future<void> _renameProjectDialog(
+  BuildContext context,
+  EditorController controller,
+) async {
+  final textController =
+      TextEditingController(text: controller.project.name);
+  final name = await showDialog<String>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Rename project'),
+      content: TextField(
+        controller: textController,
+        autofocus: true,
+        decoration: const InputDecoration(labelText: 'Project name'),
+        onSubmitted: (value) => Navigator.of(context).pop(value),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () =>
+              Navigator.of(context).pop(textController.text),
+          child: const Text('Rename'),
+        ),
+      ],
+    ),
+  );
+  textController.dispose();
+  if (name != null) {
+    controller.renameProject(name);
+  }
 }
