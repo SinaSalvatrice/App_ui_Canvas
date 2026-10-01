@@ -18,9 +18,18 @@ class RecoverySnapshot {
   final String? sourcePath;
 }
 
+typedef SupportDirectoryProvider = Future<Directory> Function();
+
 class ProjectSessionStore {
+  ProjectSessionStore({
+    SupportDirectoryProvider? directoryProvider,
+  }) : _directoryProvider =
+            directoryProvider ?? getApplicationSupportDirectory;
+
   static const _settingsFileName = 'session.json';
   static const _maxRecentProjects = 8;
+
+  final SupportDirectoryProvider _directoryProvider;
 
   Future<List<String>> loadRecentProjects() async {
     final settings = await _readSettings();
@@ -151,14 +160,14 @@ class ProjectSessionStore {
   }
 
   Future<File> _settingsFile() async {
-    final directory = await getApplicationSupportDirectory();
+    final directory = await _directoryProvider();
     return File(
       '${directory.path}${Platform.pathSeparator}$_settingsFileName',
     );
   }
 
   Future<File> _recoveryFile(DesignerTarget target) async {
-    final directory = await getApplicationSupportDirectory();
+    final directory = await _directoryProvider();
     return File(
       '${directory.path}${Platform.pathSeparator}'
       'recovery_${target.name}.json',
