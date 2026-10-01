@@ -3,6 +3,7 @@ import 'package:app_ui_designer/src/editor/editor_controller.dart';
 import 'package:app_ui_designer/src/model/app_ui_project.dart';
 import 'package:app_ui_designer/src/model/ui_node.dart';
 import 'package:app_ui_designer/src/model/ui_rect.dart';
+import 'package:app_ui_designer/src/model/screen_preset.dart';
 import 'package:app_ui_designer/src/platform/designer_target.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -213,5 +214,18 @@ void main() {
     expect(controller.isDirty, isFalse);
     expect(controller.canUndo, isFalse);
     expect(controller.activeScreenId, loaded.initialScreenId);
+  });
+  test('screen presets create and resize screens', () {
+    final controller = EditorController(
+      AppUiProject.empty(DesignerTarget.windows),
+    );
+
+    controller.addScreen(ScreenPreset.windowsCompact);
+    expect(controller.activeScreen.width, 1024);
+    expect(controller.activeScreen.height, 640);
+
+    controller.applyScreenPreset(ScreenPreset.windowsFullHd);
+    expect(controller.activeScreen.width, 1920);
+    expect(controller.activeScreen.height, 1080);
   });
 }

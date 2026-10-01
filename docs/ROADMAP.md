@@ -59,7 +59,7 @@
 - [x] editable X / Y / width / height
 - [x] numeric mouse-wheel stepping at 1 unit per notch
 - [x] editable text property
-- [ ] safe close / unsaved dialog
+- [x] safe close / unsaved dialog
 - [ ] system clipboard interoperability
 
 ## M2 - Project system
@@ -76,9 +76,9 @@
 - [x] stable node and screen IDs after loading
 - [x] project rename
 - [ ] project metadata
-- [ ] recent projects
-- [ ] autosave / recovery
-- [ ] screen presets
+- [x] recent projects
+- [x] autosave / recovery
+- [x] screen presets
 - [ ] schema migrations
 - [ ] project templates
 
