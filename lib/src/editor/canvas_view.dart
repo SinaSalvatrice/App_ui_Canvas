@@ -101,9 +101,12 @@ class _CanvasViewState extends State<CanvasView> {
                               additive: additive,
                               toggle: additive,
                             ),
+                            onMoveStart: widget.controller.beginMove,
                             onMove: (dx, dy) =>
                                 widget.controller.moveSelectedBy(dx, dy),
                             onMoveEnd: widget.controller.commitLiveEdit,
+                            onResizeStart: () =>
+                                widget.controller.beginResizeNode(node.id),
                             onResize: ({
                               required dx,
                               required dy,
@@ -279,8 +282,10 @@ class _NodeView extends StatelessWidget {
     required this.primary,
     required this.scale,
     required this.onSelect,
+    required this.onMoveStart,
     required this.onMove,
     required this.onMoveEnd,
+    required this.onResizeStart,
     required this.onResize,
     required this.onResizeEnd,
   });
@@ -290,8 +295,10 @@ class _NodeView extends StatelessWidget {
   final bool primary;
   final double scale;
   final ValueChanged<bool> onSelect;
+  final VoidCallback onMoveStart;
   final void Function(double dx, double dy) onMove;
   final VoidCallback onMoveEnd;
+  final VoidCallback onResizeStart;
   final void Function({
     required double dx,
     required double dy,
@@ -319,6 +326,7 @@ class _NodeView extends StatelessWidget {
         onTap: () => onSelect(_additiveSelection),
         onPanStart: (_) {
           if (!selected) onSelect(_additiveSelection);
+          onMoveStart();
         },
         onPanUpdate: (details) => onMove(
           details.delta.dx / scale,
@@ -354,6 +362,7 @@ class _NodeView extends StatelessWidget {
                   handle: handle,
                   scale: scale,
                   node: node,
+                  onResizeStart: onResizeStart,
                   onResize: onResize,
                   onResizeEnd: onResizeEnd,
                 ),
@@ -369,6 +378,7 @@ class _ResizeGrip extends StatelessWidget {
     required this.handle,
     required this.scale,
     required this.node,
+    required this.onResizeStart,
     required this.onResize,
     required this.onResizeEnd,
   });
@@ -376,6 +386,7 @@ class _ResizeGrip extends StatelessWidget {
   final _ResizeHandle handle;
   final double scale;
   final UiNode node;
+  final VoidCallback onResizeStart;
   final void Function({
     required double dx,
     required double dy,
@@ -415,6 +426,7 @@ class _ResizeGrip extends StatelessWidget {
         cursor: handle.cursor,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
+          onPanStart: (_) => onResizeStart(),
           onPanUpdate: (details) => onResize(
             dx: details.delta.dx / scale,
             dy: details.delta.dy / scale,
