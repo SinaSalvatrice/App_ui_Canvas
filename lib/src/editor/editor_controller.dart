@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../components/component_definition.dart';
 import '../model/app_ui_project.dart';
+import '../model/project_metadata.dart';
 import '../model/ui_node.dart';
 import '../model/ui_rect.dart';
 import '../model/ui_screen.dart';
@@ -223,6 +224,22 @@ class EditorController extends ChangeNotifier {
     final trimmed = name.trim();
     if (trimmed.isEmpty || trimmed == _project.name) return;
     _project = _project.copyWith(name: trimmed);
+    _pushHistory();
+    notifyListeners();
+  }
+
+  void updateProjectSettings({
+    required String name,
+    required ProjectMetadata metadata,
+  }) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return;
+    final next = _project.copyWith(
+      name: trimmed,
+      metadata: metadata,
+    );
+    if (jsonEncode(next.toJson()) == jsonEncode(_project.toJson())) return;
+    _project = next;
     _pushHistory();
     notifyListeners();
   }
