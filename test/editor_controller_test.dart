@@ -365,4 +365,78 @@ void main() {
     controller.applyScreenPreset(ScreenPreset.windowsStandard);
     expect(controller.selectedNode!.frame.width, component.defaultFrame.width);
   });
+
+  test('Android note is an independent editor-only node', () {
+    final controller = EditorController(
+      AppUiProject.empty(DesignerTarget.android),
+    );
+    final note = ComponentRegistry.forTarget(DesignerTarget.android)
+        .firstWhere((component) => component.type == 'note');
+
+    controller.addComponent(note);
+
+    expect(controller.selectedNode!.type, 'note');
+    expect(controller.selectedNode!.editorOnly, isTrue);
+    expect(controller.selectedNode!.children, isEmpty);
+  });
+
+  test('selection can wrap into Row and unwrap again', () {
+    final controller = EditorController(
+      AppUiProject.empty(DesignerTarget.android),
+    );
+    final components = ComponentRegistry.forTarget(DesignerTarget.android);
+    controller.addComponent(components[0]);
+    final firstId = controller.selectedNodeId!;
+    controller.addComponent(components[1]);
+    final secondId = controller.selectedNodeId!;
+
+    controller.selectNode(firstId);
+    controller.selectNode(secondId, additive: true);
+    controller.wrapSelectedInContainer('row');
+
+    final row = controller.selectedNode!;
+    expect(row.type, 'row');
+    expect(row.children, hasLength(2));
+    expect(row.children[1].frame.x, greaterThan(row.children[0].frame.x));
+
+    controller.unwrapSelectedContainer();
+
+    expect(controller.activeScreen.nodes, hasLength(2));
+    expect(controller.selectedCount, 2);
+  });
+
+  test('Stack children use parent-relative right anchor on resize', () {
+    final controller = EditorController(
+      AppUiProject.empty(DesignerTarget.android),
+    );
+    final components = ComponentRegistry.forTarget(DesignerTarget.android);
+    controller.addComponent(components[0]);
+    final firstId = controller.selectedNodeId!;
+    controller.updatePrimaryLayout(
+      controller.selectedNode!.layout.copyWith(
+        horizontalAnchor: UiHorizontalAnchor.right,
+      ),
+    );
+
+    controller.addComponent(components[1]);
+    final secondId = controller.selectedNodeId!;
+    controller.selectNode(firstId);
+    controller.selectNode(secondId, additive: true);
+    controller.wrapSelectedInContainer('stack');
+
+    final before = controller.selectedNode!.children
+        .firstWhere((child) => child.id == firstId)
+        .frame
+        .x;
+    final stackWidth = controller.selectedNode!.frame.width;
+
+    controller.updatePrimaryFrame(width: stackWidth + 100);
+
+    final after = controller.selectedNode!.children
+        .firstWhere((child) => child.id == firstId)
+        .frame
+        .x;
+    expect(after, before + 100);
+  });
+
 }

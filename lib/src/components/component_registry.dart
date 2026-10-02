@@ -24,7 +24,7 @@ class ComponentRegistry {
         category: 'Editor',
         defaultFrame: UiRect(x: 40, y: 180, width: 220, height: 150),
         defaultProperties: {
-          'text': 'Note',
+          'text': '',
           'editorOnly': true,
         },
       ),

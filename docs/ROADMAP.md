@@ -95,10 +95,10 @@
 - [x] Hug reflow when text content changes
 - [x] arbitrary resizable Windows preview
 - [x] Android portrait / landscape preview toggle
-- [ ] Row / Column / Stack containers
-- [ ] nested parent-relative constraints
+- [x] Row / Column / Stack containers
+- [x] parent-relative Stack constraints\n- [ ] direct child selection/editing inside containers
 
-## M4 - Component libraries
+### Editor UX\n- [x] graphical component previews instead of placeholder labels\n- [x] editor-only notes\n- [x] Android visual component palette\n\n## M4 - Component libraries
 Windows: title/menu bars, navigation, split views, toolbars, context menus, tree/list/grid and dialogs.
 Android: app bar, bottom navigation, drawer, FAB, bottom sheet, snackbar, inputs, dialogs and tabs.
 

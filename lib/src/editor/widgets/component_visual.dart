@@ -105,7 +105,7 @@ class _ComponentPainter extends CustomPainter {
 
     final stroke = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = (compact ? 1.4 : 1.2).clamp(1.0, 2.0)
+      ..strokeWidth = (compact ? 1.4 : 1.2).clamp(1.0, 2.0).toDouble()
       ..color = outline;
     final fill = Paint()
       ..style = PaintingStyle.fill
@@ -125,8 +125,8 @@ class _ComponentPainter extends CustomPainter {
     Rect inset(double amount) => Rect.fromLTWH(
           amount,
           amount,
-          (w - amount * 2).clamp(0, w),
-          (h - amount * 2).clamp(0, h),
+          (w - amount * 2).clamp(0.0, w).toDouble(),
+          (h - amount * 2).clamp(0.0, h).toDouble(),
         );
 
     void roundedBox({
@@ -172,7 +172,7 @@ class _ComponentPainter extends CustomPainter {
             text: '▱',
             style: TextStyle(
               color: foreground.withValues(alpha: .75),
-              fontSize: (h * .55).clamp(18, 42),
+              fontSize: (h * .55).clamp(18.0, 42.0).toDouble(),
             ),
           ),
           textDirection: TextDirection.ltr,
@@ -371,7 +371,7 @@ class _ComponentPainter extends CustomPainter {
         text: value,
         style: TextStyle(
           color: color,
-          fontSize: (size.height * .42).clamp(10, 24),
+          fontSize: (size.height * .42).clamp(10.0, 24.0).toDouble(),
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -437,7 +437,7 @@ class _ComponentPainter extends CustomPainter {
         text: value,
         style: TextStyle(
           color: const Color(0xFF514716),
-          fontSize: (size.height * .10).clamp(10, 18),
+          fontSize: (size.height * .10).clamp(10.0, 18.0).toDouble(),
         ),
       ),
       textDirection: TextDirection.ltr,
