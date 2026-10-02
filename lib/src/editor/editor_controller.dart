@@ -63,6 +63,21 @@ class EditorController extends ChangeNotifier {
   bool get canUndo => _historyIndex > 0;
   bool get canRedo => _historyIndex < _history.length - 1;
   bool get canPaste => _clipboard.isNotEmpty;
+  bool get canWrapSelection => activeScreen.nodes
+          .where(
+            (node) =>
+                _selectedNodeIds.contains(node.id) && !node.locked,
+          )
+          .length >=
+      2;
+  bool get canUnwrapSelected {
+    final node = selectedNode;
+    return selectedCount == 1 &&
+        node != null &&
+        _isLayoutContainer(node.type) &&
+        node.children.isNotEmpty;
+  }
+
   bool get isDirty => jsonEncode(_project.toJson()) != _cleanProjectJson;
   double? get activeGuideX => _activeGuideX;
   double? get activeGuideY => _activeGuideY;
@@ -364,6 +379,143 @@ class EditorController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void wrapSelectedInContainer(String type) {
+    if (!_isLayoutContainer(type)) return;
+
+    final selected = activeScreen.nodes
+        .where(
+          (node) =>
+              _selectedNodeIds.contains(node.id) && !node.locked,
+        )
+        .toList();
+    if (selected.length < 2) return;
+
+    final bounds = _boundsOf(selected.map((node) => node.frame));
+    if (bounds == null) return;
+
+    const padding = 12.0;
+    const spacing = 12.0;
+    final containerFrame = UiRect(
+      x: bounds.x - padding,
+      y: bounds.y - padding,
+      width: bounds.width + padding * 2,
+      height: bounds.height + padding * 2,
+    );
+
+    var children = selected.map((node) {
+      final relativeFrame = node.frame.copyWith(
+        x: node.frame.x - containerFrame.x,
+        y: node.frame.y - containerFrame.y,
+      );
+      var layout = node.layout;
+      if (layout.widthMode == UiSizeMode.fill) {
+        layout = layout.copyWith(
+          leftInset: relativeFrame.x,
+          rightInset:
+              containerFrame.width - relativeFrame.x - relativeFrame.width,
+        );
+      }
+      if (layout.heightMode == UiSizeMode.fill) {
+        layout = layout.copyWith(
+          topInset: relativeFrame.y,
+          bottomInset:
+              containerFrame.height - relativeFrame.y - relativeFrame.height,
+        );
+      }
+      return node.copyWith(
+        frame: relativeFrame,
+        layout: layout,
+      );
+    }).toList();
+
+    if (type == 'row') {
+      children.sort((a, b) => a.frame.x.compareTo(b.frame.x));
+    } else if (type == 'column') {
+      children.sort((a, b) => a.frame.y.compareTo(b.frame.y));
+    }
+
+    var container = UiNode(
+      id: _newNodeId(),
+      type: type,
+      name: switch (type) {
+        'row' => 'Row',
+        'column' => 'Column',
+        _ => 'Stack',
+      },
+      frame: containerFrame,
+      layout: type == 'stack'
+          ? const UiLayoutSpec()
+          : const UiLayoutSpec(
+              widthMode: UiSizeMode.hug,
+              heightMode: UiSizeMode.hug,
+            ),
+      properties: {
+        'padding': padding,
+        if (type != 'stack') 'spacing': spacing,
+      },
+      children: children,
+    );
+    container = _relayoutContainer(
+      container,
+      previousFrame: containerFrame,
+    );
+
+    final selectedIds = selected.map((node) => node.id).toSet();
+    final firstIndex = activeScreen.nodes.indexWhere(
+      (node) => selectedIds.contains(node.id),
+    );
+    final remaining = activeScreen.nodes
+        .where((node) => !selectedIds.contains(node.id))
+        .toList();
+    final insertIndex = firstIndex.clamp(0, remaining.length).toInt();
+    remaining.insert(insertIndex, container);
+
+    _replaceActiveScreen(
+      activeScreen.copyWith(nodes: remaining),
+      commit: true,
+    );
+    _selectOnly(container.id);
+    notifyListeners();
+  }
+
+  void unwrapSelectedContainer() {
+    final container = selectedNode;
+    if (container == null ||
+        !_isLayoutContainer(container.type) ||
+        container.children.isEmpty) {
+      return;
+    }
+
+    final parentIndex = activeScreen.nodes.indexWhere(
+      (node) => node.id == container.id,
+    );
+    if (parentIndex < 0) return;
+
+    final restored = container.children.map((child) {
+      final absolute = child.frame.copyWith(
+        x: container.frame.x + child.frame.x,
+        y: container.frame.y + child.frame.y,
+      );
+      return _nodeWithSyncedInsets(
+        child.copyWith(frame: absolute),
+      );
+    }).toList();
+
+    final nodes = [...activeScreen.nodes]..removeAt(parentIndex);
+    nodes.insertAll(parentIndex, restored);
+
+    _replaceActiveScreen(
+      activeScreen.copyWith(nodes: nodes),
+      commit: true,
+    );
+    _selectedNodeIds
+      ..clear()
+      ..addAll(restored.map((node) => node.id));
+    _primarySelectedNodeId =
+        restored.isEmpty ? null : restored.last.id;
+    notifyListeners();
+  }
+
   void nudgeSelected(double dx, double dy) {
     if (_selectedNodeIds.isEmpty) return;
     final nodes = activeScreen.nodes.map((node) {
@@ -579,17 +731,18 @@ class EditorController extends ChangeNotifier {
       height = constrainedHeight;
     }
 
+    final resizedFrame = source.frame.copyWith(
+      x: snapEnabled ? _snap(x) : x,
+      y: snapEnabled ? _snap(y) : y,
+      width: width,
+      height: height,
+    );
+    final resizedNode = _relayoutContainer(
+      source.copyWith(frame: resizedFrame),
+      previousFrame: start,
+    );
     _replaceNode(
-      _nodeWithSyncedInsets(
-        source.copyWith(
-          frame: source.frame.copyWith(
-            x: snapEnabled ? _snap(x) : x,
-            y: snapEnabled ? _snap(y) : y,
-            width: width,
-            height: height,
-          ),
-        ),
-      ),
+      _nodeWithSyncedInsets(resizedNode),
       commit: false,
     );
   }
@@ -681,8 +834,12 @@ class EditorController extends ChangeNotifier {
       width: width == null ? null : node.layout.constrainWidth(width),
       height: height == null ? null : node.layout.constrainHeight(height),
     );
+    final updated = _relayoutContainer(
+      node.copyWith(frame: nextFrame),
+      previousFrame: node.frame,
+    );
     _replaceNode(
-      _nodeWithSyncedInsets(node.copyWith(frame: nextFrame)),
+      _nodeWithSyncedInsets(updated),
       commit: true,
     );
   }
@@ -1076,13 +1233,17 @@ class EditorController extends ChangeNotifier {
                   height,
           };
 
-    return node.copyWith(
+    final resized = node.copyWith(
       frame: oldFrame.copyWith(
         x: x,
         y: y,
         width: width,
         height: height,
       ),
+    );
+    return _relayoutContainer(
+      resized,
+      previousFrame: oldFrame,
     );
   }
 
@@ -1131,18 +1292,22 @@ class EditorController extends ChangeNotifier {
         node.frame.y + previousFrame.height - height,
     };
 
+    final resolved = node.copyWith(
+      frame: node.frame.copyWith(
+        x: layout.widthMode == UiSizeMode.fill
+            ? layout.leftInset ?? x
+            : x,
+        y: layout.heightMode == UiSizeMode.fill
+            ? layout.topInset ?? y
+            : y,
+        width: width,
+        height: height,
+      ),
+    );
     return _nodeWithSyncedInsets(
-      node.copyWith(
-        frame: node.frame.copyWith(
-          x: layout.widthMode == UiSizeMode.fill
-              ? layout.leftInset ?? x
-              : x,
-          y: layout.heightMode == UiSizeMode.fill
-              ? layout.topInset ?? y
-              : y,
-          width: width,
-          height: height,
-        ),
+      _relayoutContainer(
+        resolved,
+        previousFrame: previousFrame,
       ),
     );
   }
@@ -1167,17 +1332,65 @@ class EditorController extends ChangeNotifier {
   }
 
   double _hugWidth(UiNode node) {
+    final padding = _containerPadding(node);
+    final spacing = _containerSpacing(node);
+    if (node.type == 'row' && node.children.isNotEmpty) {
+      final childWidth = node.children.fold<double>(
+        0,
+        (sum, child) => sum + child.frame.width,
+      );
+      return childWidth +
+          spacing * (node.children.length - 1) +
+          padding * 2;
+    }
+    if (node.type == 'column' && node.children.isNotEmpty) {
+      final widest = node.children
+          .map((child) => child.frame.width)
+          .reduce((a, b) => a > b ? a : b);
+      return widest + padding * 2;
+    }
+    if (node.type == 'stack' && node.children.isNotEmpty) {
+      final right = node.children
+          .map((child) => child.frame.x + child.frame.width)
+          .reduce((a, b) => a > b ? a : b);
+      return right + padding;
+    }
+
     final text = node.properties['text']?.toString();
     if (text == null || text.isEmpty) return node.frame.width;
-    final padding = switch (node.type) {
+    final contentPadding = switch (node.type) {
       'button' || 'filledButton' => 40.0,
       'textField' => 32.0,
       _ => 20.0,
     };
-    return text.length * 8.0 + padding;
+    return text.length * 8.0 + contentPadding;
   }
 
   double _hugHeight(UiNode node) {
+    final padding = _containerPadding(node);
+    final spacing = _containerSpacing(node);
+    if (node.type == 'row' && node.children.isNotEmpty) {
+      final tallest = node.children
+          .map((child) => child.frame.height)
+          .reduce((a, b) => a > b ? a : b);
+      return tallest + padding * 2;
+    }
+    if (node.type == 'column' && node.children.isNotEmpty) {
+      final childHeight = node.children.fold<double>(
+        0,
+        (sum, child) => sum + child.frame.height,
+      );
+      return childHeight +
+          spacing * (node.children.length - 1) +
+          padding * 2;
+    }
+    if (node.type == 'stack' && node.children.isNotEmpty) {
+      final bottom = node.children
+          .map((child) => child.frame.y + child.frame.height)
+          .reduce((a, b) => a > b ? a : b);
+      return bottom + padding;
+    }
+
     return switch (node.type) {
       'button' || 'filledButton' => 40.0,
       'textField' => 48.0,
@@ -1185,6 +1398,194 @@ class EditorController extends ChangeNotifier {
       'text' => 32.0,
       _ => node.frame.height,
     };
+  }
+
+  bool _isLayoutContainer(String type) =>
+      type == 'row' || type == 'column' || type == 'stack';
+
+  double _containerPadding(UiNode node) =>
+      (node.properties['padding'] as num?)?.toDouble() ?? 12;
+
+  double _containerSpacing(UiNode node) =>
+      (node.properties['spacing'] as num?)?.toDouble() ?? 12;
+
+  UiNode _relayoutContainer(
+    UiNode node, {
+    required UiRect previousFrame,
+  }) {
+    if (!_isLayoutContainer(node.type) || node.children.isEmpty) {
+      return node;
+    }
+
+    final padding = _containerPadding(node);
+    final spacing = _containerSpacing(node);
+    var children = [...node.children];
+
+    if (node.type == 'row') {
+      var x = padding;
+      final availableHeight =
+          (node.frame.height - padding * 2).clamp(0.0, 10000.0).toDouble();
+      children = [
+        for (final child in children)
+          (() {
+            var height = child.frame.height;
+            if (child.layout.heightMode == UiSizeMode.fill) {
+              height = child.layout.constrainHeight(availableHeight);
+            }
+            final y = switch (child.layout.verticalAnchor) {
+              UiVerticalAnchor.top => padding,
+              UiVerticalAnchor.center =>
+                padding + (availableHeight - height) / 2,
+              UiVerticalAnchor.bottom =>
+                padding + availableHeight - height,
+            };
+            final next = child.copyWith(
+              frame: child.frame.copyWith(
+                x: x,
+                y: y,
+                height: height,
+              ),
+            );
+            x += child.frame.width + spacing;
+            return next;
+          })(),
+      ];
+    } else if (node.type == 'column') {
+      var y = padding;
+      final availableWidth =
+          (node.frame.width - padding * 2).clamp(0.0, 10000.0).toDouble();
+      children = [
+        for (final child in children)
+          (() {
+            var width = child.frame.width;
+            if (child.layout.widthMode == UiSizeMode.fill) {
+              width = child.layout.constrainWidth(availableWidth);
+            }
+            final x = switch (child.layout.horizontalAnchor) {
+              UiHorizontalAnchor.left => padding,
+              UiHorizontalAnchor.center =>
+                padding + (availableWidth - width) / 2,
+              UiHorizontalAnchor.right =>
+                padding + availableWidth - width,
+            };
+            final next = child.copyWith(
+              frame: child.frame.copyWith(
+                x: x,
+                y: y,
+                width: width,
+              ),
+            );
+            y += child.frame.height + spacing;
+            return next;
+          })(),
+      ];
+    } else {
+      children = [
+        for (final child in children)
+          _reflowChildForParentResize(
+            child,
+            oldParent: previousFrame,
+            newParent: node.frame,
+          ),
+      ];
+    }
+
+    var updated = node.copyWith(children: children);
+    var width = updated.frame.width;
+    var height = updated.frame.height;
+
+    if (updated.layout.widthMode == UiSizeMode.hug) {
+      width = updated.layout.constrainWidth(_hugWidth(updated));
+    }
+    if (updated.layout.heightMode == UiSizeMode.hug) {
+      height = updated.layout.constrainHeight(_hugHeight(updated));
+    }
+
+    if (width != updated.frame.width || height != updated.frame.height) {
+      updated = updated.copyWith(
+        frame: updated.frame.copyWith(
+          width: width,
+          height: height,
+        ),
+      );
+
+      if (node.type == 'row' || node.type == 'column') {
+        return _relayoutContainer(
+          updated,
+          previousFrame: updated.frame,
+        );
+      }
+    }
+
+    return updated;
+  }
+
+  UiNode _reflowChildForParentResize(
+    UiNode child, {
+    required UiRect oldParent,
+    required UiRect newParent,
+  }) {
+    final layout = child.layout;
+    final oldFrame = child.frame;
+
+    var width = oldFrame.width;
+    var height = oldFrame.height;
+
+    if (layout.widthMode == UiSizeMode.fill) {
+      final left = layout.leftInset ?? oldFrame.x;
+      final right = layout.rightInset ??
+          oldParent.width - oldFrame.x - oldFrame.width;
+      width = layout.constrainWidth(
+        newParent.width - left - right,
+      );
+    }
+    if (layout.heightMode == UiSizeMode.fill) {
+      final top = layout.topInset ?? oldFrame.y;
+      final bottom = layout.bottomInset ??
+          oldParent.height - oldFrame.y - oldFrame.height;
+      height = layout.constrainHeight(
+        newParent.height - top - bottom,
+      );
+    }
+
+    final x = layout.widthMode == UiSizeMode.fill
+        ? layout.leftInset ?? oldFrame.x
+        : switch (layout.horizontalAnchor) {
+            UiHorizontalAnchor.left => oldFrame.x,
+            UiHorizontalAnchor.center =>
+              oldFrame.x +
+                  (newParent.width - oldParent.width) / 2 +
+                  (oldFrame.width - width) / 2,
+            UiHorizontalAnchor.right =>
+              oldFrame.x +
+                  (newParent.width - oldParent.width) +
+                  oldFrame.width -
+                  width,
+          };
+
+    final y = layout.heightMode == UiSizeMode.fill
+        ? layout.topInset ?? oldFrame.y
+        : switch (layout.verticalAnchor) {
+            UiVerticalAnchor.top => oldFrame.y,
+            UiVerticalAnchor.center =>
+              oldFrame.y +
+                  (newParent.height - oldParent.height) / 2 +
+                  (oldFrame.height - height) / 2,
+            UiVerticalAnchor.bottom =>
+              oldFrame.y +
+                  (newParent.height - oldParent.height) +
+                  oldFrame.height -
+                  height,
+          };
+
+    return child.copyWith(
+      frame: oldFrame.copyWith(
+        x: x,
+        y: y,
+        width: width,
+        height: height,
+      ),
+    );
   }
 
   UiNode? _nodeById(String id) {
