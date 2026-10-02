@@ -27,6 +27,9 @@ if not exist "windows\" (
   echo [1/5] Windows-Host vorhanden.
 )
 
+powershell -NoProfile -ExecutionPolicy Bypass -File "tool\apply_app_icon.ps1" -Letter A
+if errorlevel 1 goto :failed
+
 echo.
 echo [2/5] Pakete laden...
 call flutter pub get
