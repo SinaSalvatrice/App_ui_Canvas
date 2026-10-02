@@ -9,6 +9,7 @@ import '../model/ui_screen.dart';
 import '../platform/designer_target.dart';
 import 'canvas_view.dart';
 import 'editor_controller.dart';
+import 'widgets/component_visual.dart';
 import 'widgets/inspector_panel.dart';
 import 'widgets/layers_panel.dart';
 
@@ -769,28 +770,92 @@ class _ComponentLibrary extends StatelessWidget {
       categories.putIfAbsent(component.category, () => []).add(component);
     }
 
-    return ListView(
-      padding: const EdgeInsets.all(12),
-      children: [
-        Text('Components', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 6),
-        for (final entry in categories.entries) ...[
-          Padding(
-            padding: const EdgeInsets.only(top: 12, bottom: 4),
-            child: Text(
-              entry.key,
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 560
+            ? 4
+            : constraints.maxWidth >= 350
+                ? 3
+                : 2;
+        const spacing = 8.0;
+        final tileWidth = (constraints.maxWidth -
+                24 -
+                spacing * (columns - 1)) /
+            columns;
+
+        return ListView(
+          padding: const EdgeInsets.all(12),
+          children: [
+            for (final entry in categories.entries) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: 6, bottom: 8),
+                child: Text(
+                  entry.key,
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+              ),
+              Wrap(
+                spacing: spacing,
+                runSpacing: spacing,
+                children: [
+                  for (final component in entry.value)
+                    SizedBox(
+                      width: tileWidth,
+                      height: 104,
+                      child: _ComponentTile(
+                        component: component,
+                        onTap: () => onAdd(component),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ComponentTile extends StatelessWidget {
+  const _ComponentTile({
+    required this.component,
+    required this.onTap,
+  });
+
+  final ComponentDefinition component;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
+          child: Column(
+            children: [
+              Expanded(
+                child: ComponentVisual(
+                  type: component.type,
+                  properties: component.defaultProperties,
+                  compact: true,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                component.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+            ],
           ),
-          for (final component in entry.value)
-            ListTile(
-              dense: true,
-              leading: const Icon(Icons.widgets_outlined, size: 18),
-              title: Text(component.label),
-              onTap: () => onAdd(component),
-            ),
-        ],
-      ],
+        ),
+      ),
     );
   }
 }

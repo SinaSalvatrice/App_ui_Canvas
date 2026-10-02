@@ -8,6 +8,7 @@ import '../model/ui_node.dart';
 import '../model/ui_rect.dart';
 import '../platform/designer_target.dart';
 import 'editor_controller.dart';
+import 'widgets/component_visual.dart';
 
 class CanvasView extends StatefulWidget {
   const CanvasView({
@@ -671,35 +672,32 @@ class _NodeView extends StatelessWidget {
             clipBehavior: Clip.none,
             children: [
               Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: node.locked
-                        ? const Color(0xFFEDEDED)
-                        : const Color(0xFFF5F5F5),
-                    border: Border.all(
-                      color: selected
-                          ? Theme.of(context).colorScheme.primary
-                          : Colors.black26,
-                      width: selected ? 2 / scale : 1 / scale,
-                    ),
-                  ),
-                  child: Stack(
-                    children: [
-                      Center(
-                        child: Text(
-                          (node.properties['text'] ?? node.name ?? node.type)
-                              .toString(),
-                          textAlign: TextAlign.center,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    NodeVisual(node: node),
+                    IgnorePointer(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: node.locked
+                              ? const Color(0x14000000)
+                              : Colors.transparent,
+                          border: Border.all(
+                            color: selected
+                                ? Theme.of(context).colorScheme.primary
+                                : Colors.black26,
+                            width: selected ? 2 / scale : 1 / scale,
+                          ),
                         ),
                       ),
-                      if (node.locked)
-                        const Positioned(
-                          top: 4,
-                          right: 4,
-                          child: Icon(Icons.lock, size: 14),
-                        ),
-                    ],
-                  ),
+                    ),
+                    if (node.locked)
+                      const Positioned(
+                        top: 4,
+                        right: 4,
+                        child: Icon(Icons.lock, size: 14),
+                      ),
+                  ],
                 ),
               ),
               if (primary && !node.locked) ...[
