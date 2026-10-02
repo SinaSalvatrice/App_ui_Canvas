@@ -26,6 +26,9 @@ class UiNode {
   final Map<String, Object?> properties;
   final List<UiNode> children;
 
+  bool get editorOnly =>
+      type == 'note' || properties['editorOnly'] == true;
+
   UiNode copyWith({
     String? name,
     UiRect? frame,

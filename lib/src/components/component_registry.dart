@@ -19,10 +19,41 @@ class ComponentRegistry {
         defaultFrame: UiRect(x: 40, y: 100, width: 220, height: 160),
       ),
       ComponentDefinition(
+        type: 'note',
+        label: 'Note',
+        category: 'Editor',
+        defaultFrame: UiRect(x: 40, y: 180, width: 220, height: 150),
+        defaultProperties: {
+          'text': 'Note',
+          'editorOnly': true,
+        },
+      ),
+      ComponentDefinition(
         type: 'container',
         label: 'Container',
         category: 'Layout',
         defaultFrame: UiRect(x: 40, y: 280, width: 300, height: 180),
+      ),
+      ComponentDefinition(
+        type: 'row',
+        label: 'Row',
+        category: 'Layout',
+        defaultFrame: UiRect(x: 40, y: 280, width: 320, height: 100),
+        defaultProperties: {'spacing': 12.0, 'padding': 12.0},
+      ),
+      ComponentDefinition(
+        type: 'column',
+        label: 'Column',
+        category: 'Layout',
+        defaultFrame: UiRect(x: 40, y: 280, width: 180, height: 260),
+        defaultProperties: {'spacing': 12.0, 'padding': 12.0},
+      ),
+      ComponentDefinition(
+        type: 'stack',
+        label: 'Stack',
+        category: 'Layout',
+        defaultFrame: UiRect(x: 40, y: 280, width: 260, height: 200),
+        defaultProperties: {'padding': 12.0},
       ),
       ComponentDefinition(
         type: 'textField',
