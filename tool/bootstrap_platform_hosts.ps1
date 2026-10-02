@@ -22,5 +22,7 @@ foreach ($platform in @("android", "windows")) {
     }
 }
 
+& (Join-Path $PSScriptRoot "apply_app_icon.ps1") -Letter A
+
 Remove-Item $temp -Recurse -Force
 Write-Host "Done. Run flutter pub get."
