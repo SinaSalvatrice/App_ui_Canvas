@@ -28,13 +28,57 @@ class InspectorPanel extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(14),
       children: [
-        if (controller.selectedCount > 1)
+        if (controller.selectedCount > 1) ...[
           Padding(
-            padding: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.only(bottom: 8),
             child: Chip(
               label: Text('${controller.selectedCount} selected'),
             ),
           ),
+          Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Wrap selection',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: controller.canWrapSelection
+                            ? () => controller.wrapSelectedInContainer('row')
+                            : null,
+                        icon: const Icon(Icons.view_week_outlined, size: 18),
+                        label: const Text('Row'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: controller.canWrapSelection
+                            ? () => controller.wrapSelectedInContainer('column')
+                            : null,
+                        icon: const Icon(Icons.view_agenda_outlined, size: 18),
+                        label: const Text('Column'),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: controller.canWrapSelection
+                            ? () => controller.wrapSelectedInContainer('stack')
+                            : null,
+                        icon: const Icon(Icons.layers_outlined, size: 18),
+                        label: const Text('Stack'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
         Row(
           children: [
             Expanded(
@@ -249,6 +293,53 @@ class InspectorPanel extends StatelessWidget {
             ),
           ],
         ),
+        if (node.type == 'row' ||
+            node.type == 'column' ||
+            node.type == 'stack') ...[
+          const Divider(height: 26),
+          Text(
+            'Container',
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: WheelNumberField(
+                  label: 'Padding',
+                  value:
+                      (node.properties['padding'] as num?)?.toDouble() ?? 12,
+                  min: 0,
+                  enabled: editable,
+                  onChanged: (value) =>
+                      controller.updatePrimaryProperty('padding', value),
+                ),
+              ),
+              if (node.type != 'stack') ...[
+                const SizedBox(width: 8),
+                Expanded(
+                  child: WheelNumberField(
+                    label: 'Spacing',
+                    value:
+                        (node.properties['spacing'] as num?)?.toDouble() ?? 12,
+                    min: 0,
+                    enabled: editable,
+                    onChanged: (value) =>
+                        controller.updatePrimaryProperty('spacing', value),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: controller.canUnwrapSelected
+                ? controller.unwrapSelectedContainer
+                : null,
+            icon: const Icon(Icons.call_split, size: 18),
+            label: const Text('Unwrap children'),
+          ),
+        ],
         const SizedBox(height: 14),
         Text('Align', style: Theme.of(context).textTheme.labelLarge),
         const SizedBox(height: 6),
@@ -296,20 +387,26 @@ class InspectorPanel extends StatelessWidget {
         ),
         if (node.properties.containsKey('text')) ...[
           const Divider(height: 26),
-          Text('Content', style: Theme.of(context).textTheme.labelLarge),
+          Text(
+            node.type == 'note' ? 'Note' : 'Content',
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
           const SizedBox(height: 8),
-          TextFormField(
-            key: ValueKey('text-${node.id}-${node.properties['text']}'),
-            initialValue: (node.properties['text'] ?? '').toString(),
+          _TextPropertyField(
+            key: ValueKey('text-${node.id}'),
+            value: (node.properties['text'] ?? '').toString(),
             enabled: editable,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              labelText: 'Text',
-              border: OutlineInputBorder(),
-            ),
-            onFieldSubmitted: (value) =>
+            note: node.type == 'note',
+            onCommit: (value) =>
                 controller.updatePrimaryProperty('text', value),
           ),
+          if (node.editorOnly) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Editor only · ignored by app export',
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
+          ],
         ],
         const Divider(height: 26),
         _NodeActions(controller: controller, node: node),
@@ -417,6 +514,86 @@ class _OptionalNumberField extends StatelessWidget {
         final parsed = double.tryParse(trimmed.replaceAll(',', '.'));
         if (parsed != null && parsed > 0) onChanged(parsed);
       },
+    );
+  }
+}
+
+class _TextPropertyField extends StatefulWidget {
+  const _TextPropertyField({
+    required this.value,
+    required this.enabled,
+    required this.note,
+    required this.onCommit,
+    super.key,
+  });
+
+  final String value;
+  final bool enabled;
+  final bool note;
+  final ValueChanged<String> onCommit;
+
+  @override
+  State<_TextPropertyField> createState() => _TextPropertyFieldState();
+}
+
+class _TextPropertyFieldState extends State<_TextPropertyField> {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
+  String _lastCommitted = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _lastCommitted = widget.value;
+    _controller = TextEditingController(text: widget.value);
+    _focusNode = FocusNode()..addListener(_handleFocus);
+  }
+
+  @override
+  void didUpdateWidget(covariant _TextPropertyField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_focusNode.hasFocus && widget.value != _lastCommitted) {
+      _lastCommitted = widget.value;
+      _controller.text = widget.value;
+    }
+  }
+
+  void _handleFocus() {
+    if (!_focusNode.hasFocus) _commit();
+  }
+
+  void _commit() {
+    final value = _controller.text;
+    if (value == _lastCommitted) return;
+    _lastCommitted = value;
+    widget.onCommit(value);
+  }
+
+  @override
+  void dispose() {
+    _commit();
+    _focusNode
+      ..removeListener(_handleFocus)
+      ..dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      focusNode: _focusNode,
+      enabled: widget.enabled,
+      minLines: widget.note ? 4 : 1,
+      maxLines: widget.note ? 8 : 3,
+      textInputAction:
+          widget.note ? TextInputAction.newline : TextInputAction.done,
+      decoration: InputDecoration(
+        labelText: widget.note ? 'Note text' : 'Text',
+        border: const OutlineInputBorder(),
+      ),
+      onSubmitted: widget.note ? null : (_) => _commit(),
     );
   }
 }
